@@ -9,6 +9,8 @@ import {
   Settings,
   BookOpen,
   Github,
+  FileCode2,
+  Users,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
@@ -16,19 +18,20 @@ const mainNav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/databases", label: "Databases", icon: Database },
   { to: "/jobs", label: "Jobs", icon: PlayCircle },
-  { to: "/schedules", label: "Schedules", icon: Calendar },
-  { to: "/evidence", label: "Evidence Vault", icon: FileCheck },
-  { to: "/runners", label: "Runners", icon: Server },
+  { to: "/schedules", label: "Schedules", icon: Calendar, soon: true },
+  { to: "/evidence", label: "Evidence Vault", icon: FileCheck, soon: true },
+  { to: "/runners", label: "Runners", icon: Server, soon: true },
 ];
 
 const settingsNav = [
-  "General",
-  "Credentials",
-  "Validation Plans",
-  "Team & Roles",
-  "API Tokens",
-  "Webhooks",
-  "Audit Log",
+  { to: "/settings/validation-plans", label: "Validation Plans", icon: FileCode2 },
+  { to: "/settings/team", label: "Team & Roles", icon: Users },
+  { to: "/settings/runners", label: "Runners", icon: Server },
+  { label: "General", soon: true },
+  { label: "Credentials", soon: true },
+  { label: "API Tokens", soon: true },
+  { label: "Webhooks", soon: true },
+  { label: "Audit Log", soon: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -50,32 +53,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1 px-2">
-          {mainNav.map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-                  isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/60"
-                }`
-              }
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
-          ))}
+          {mainNav.map((item) =>
+            item.soon ? (
+              <div
+                key={item.label}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-500"
+                title="Coming in a later phase"
+              >
+                <item.icon size={16} />
+                <span className="flex-1">{item.label}</span>
+                <span className="text-[10px] uppercase tracking-wide text-slate-600">Soon</span>
+              </div>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to!}
+                end={item.to === "/"}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                    isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/60"
+                  }`
+                }
+              >
+                <item.icon size={16} />
+                {item.label}
+              </NavLink>
+            )
+          )}
 
-          <div className="mt-4 px-3 text-[10px] uppercase tracking-wide text-slate-500">Settings</div>
-          {settingsNav.map((label) => (
-            <div
-              key={label}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400"
-            >
-              <Settings size={16} />
-              {label}
-            </div>
-          ))}
+          <div className="mt-4 px-3 text-[10px] uppercase tracking-wide text-slate-500">
+            Settings
+          </div>
+          {settingsNav.map((item) =>
+            "to" in item && item.to ? (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
+                    isActive ? "bg-slate-800 text-white" : "text-slate-300 hover:bg-slate-800/60"
+                  }`
+                }
+              >
+                <item.icon size={16} />
+                {item.label}
+              </NavLink>
+            ) : (
+              <div
+                key={item.label}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-500"
+              >
+                <Settings size={16} />
+                <span className="flex-1">{item.label}</span>
+                <span className="text-[10px] uppercase tracking-wide text-slate-600">Soon</span>
+              </div>
+            )
+          )}
         </nav>
 
         <div className="border-t border-slate-700 px-2 py-3 text-sm text-slate-400">
@@ -102,7 +135,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="flex-1 overflow-auto bg-slate-100">
+        <div className="mx-auto w-full max-w-[1400px] p-6 lg:p-8">{children}</div>
+      </main>
     </div>
   );
 }
