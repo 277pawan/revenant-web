@@ -89,8 +89,12 @@ export const api = {
     return request("/api/v1/auth/logout", { method: "POST" });
   },
 
-  listDatabases(page = 1, pageSize = 20): Promise<Paginated<DatabaseResource>> {
-    return request(withQuery("/api/v1/databases", { page, pageSize }));
+  listDatabases(
+    page = 1,
+    pageSize = 20,
+    search?: string
+  ): Promise<Paginated<DatabaseResource>> {
+    return request(withQuery("/api/v1/databases", { page, pageSize, search }));
   },
 
   getDatabase(id: string): Promise<{ database: DatabaseResource }> {
@@ -210,6 +214,25 @@ export const api = {
 
   listEvidence(page = 1, pageSize = 20): Promise<Paginated<EvidenceArtifactResource>> {
     return request(withQuery("/api/v1/evidence", { page, pageSize }));
+  },
+
+  async downloadJobReport(jobId: string): Promise<void> {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const res = await fetch(`${API_URL}/api/v1/jobs/${jobId}/evidence/download`, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? `Download failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `revenant-report-${jobId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 
   async downloadEvidence(id: string): Promise<void> {

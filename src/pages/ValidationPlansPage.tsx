@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { AlignLeft } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
-import { Field, Input, Select } from "../components/ui/Field";
+import { DatabasePlanPicker } from "../components/DatabasePlanPicker";
+import { Field, Input } from "../components/ui/Field";
 import {
   YamlEditor,
   formatYaml,
   parseYamlChecks,
   useYamlPreview,
 } from "../components/YamlEditor";
+import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -24,7 +26,10 @@ import {
 } from "../types/api";
 
 const planFormSchema = z.object({
-  databaseId: z.string().uuid("Select a database"),
+  databaseId: z
+    .string()
+    .min(1, "Select a database")
+    .uuid("Select a database"),
   name: z.string().min(1, "Name is required").max(255),
   yamlText: z
     .string()
@@ -52,6 +57,7 @@ checks:
 
 export function ValidationPlansPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canWrite = user ? roleHasPermission(user.role, "plans:write") : false;
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -63,13 +69,14 @@ export function ValidationPlansPage() {
     totalPages: 1,
   });
   const [page, setPage] = useState(1);
-  const [databases, setDatabases] = useState<DatabaseResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [formatError, setFormatError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ValidationPlanResource | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const initialDbLoaded = useRef(false);
 
   const {
     register,
@@ -98,23 +105,75 @@ export function ValidationPlansPage() {
     setPage(res.pagination.page);
   }, []);
 
-  const loadDatabases = useCallback(async () => {
-    const res = await api.listDatabases(1, 100);
-    setDatabases(res.data);
-  }, []);
+  const loadPlanForDatabase = useCallback(
+    async (databaseId: string, db?: DatabaseResource | null) => {
+      setLoadingPlan(true);
+      try {
+        const cached = plans.find((p) => p.databaseId === databaseId);
+        if (cached) {
+          reset({
+            databaseId,
+            name: cached.name,
+            yamlText: cached.yamlText,
+          });
+          return;
+        }
+        if (db?.hasValidationPlan) {
+          const res = await api.getValidationPlan(databaseId);
+          reset({
+            databaseId,
+            name: res.plan.name,
+            yamlText: res.plan.yamlText,
+          });
+          toast.success("Plan loaded", `${db.name} · v${res.plan.version}`);
+          return;
+        }
+        reset({
+          databaseId,
+          name: "default",
+          yamlText: DEFAULT_YAML,
+        });
+      } catch (err) {
+        reset({
+          databaseId,
+          name: "default",
+          yamlText: DEFAULT_YAML,
+        });
+        if (db && !db.hasValidationPlan) return;
+        toast.error(
+          "Could not load plan",
+          err instanceof Error ? err.message : "Try again"
+        );
+      } finally {
+        setLoadingPlan(false);
+      }
+    },
+    [plans, reset, toast]
+  );
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    Promise.all([loadPlans(page), loadDatabases()])
+    loadPlans(page)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
-  }, [loadPlans, loadDatabases, page]);
+  }, [loadPlans, page]);
 
   useEffect(() => {
+    if (loading || initialDbLoaded.current) return;
     const id = searchParams.get("databaseId");
-    if (id) setValue("databaseId", id);
-  }, [searchParams, setValue]);
+    if (id) {
+      initialDbLoaded.current = true;
+      setValue("databaseId", id);
+      void loadPlanForDatabase(id);
+    }
+  }, [loading, searchParams, setValue, loadPlanForDatabase]);
+
+  async function onDatabaseChange(databaseId: string, db: DatabaseResource | null) {
+    setValue("databaseId", databaseId, { shouldValidate: true });
+    setSearchParams({ databaseId });
+    await loadPlanForDatabase(databaseId, db);
+  }
 
   async function onSave(values: PlanFormValues) {
     setSaving(true);
@@ -126,11 +185,30 @@ export function ValidationPlansPage() {
       });
       setSearchParams({ databaseId: values.databaseId });
       await loadPlans(page);
+      toast.success("Plan saved", `Validation plan for ${values.name} updated.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save plan");
+      const message = err instanceof Error ? err.message : "Failed to save plan";
+      setError(message);
+      toast.error("Save failed", message);
     } finally {
       setSaving(false);
     }
+  }
+
+  function onInvalid(formErrors: FieldErrors<PlanFormValues>) {
+    if (formErrors.databaseId) {
+      toast.error("Select a database", "Choose which database this plan applies to.");
+      return;
+    }
+    if (formErrors.yamlText) {
+      toast.error("Invalid YAML", formErrors.yamlText.message ?? "Fix YAML before saving.");
+      return;
+    }
+    if (formErrors.name) {
+      toast.error("Plan name required", formErrors.name.message ?? "Enter a plan name.");
+      return;
+    }
+    toast.error("Cannot save", "Please fix the highlighted fields.");
   }
 
   function onFormat() {
@@ -165,8 +243,6 @@ export function ValidationPlansPage() {
       setDeleting(false);
     }
   }
-
-  const dbOptions = useMemo(() => databases, [databases]);
 
   return (
     <AppShell>
@@ -235,7 +311,7 @@ export function ValidationPlansPage() {
         </div>
 
         <form
-          onSubmit={handleSubmit(onSave)}
+          onSubmit={handleSubmit(onSave, onInvalid)}
           noValidate
           className="rounded-lg border border-slate-200 bg-white shadow-sm"
         >
@@ -261,20 +337,20 @@ export function ValidationPlansPage() {
                 htmlFor="databaseId"
                 required
                 error={errors.databaseId?.message}
+                hint={loadingPlan ? "Loading plan for selected database…" : undefined}
               >
-                <Select
-                  id="databaseId"
-                  invalid={!!errors.databaseId}
-                  disabled={!canWrite}
-                  {...register("databaseId")}
-                >
-                  <option value="">Select database…</option>
-                  {dbOptions.map((db) => (
-                    <option key={db.id} value={db.id}>
-                      {db.name}
-                    </option>
-                  ))}
-                </Select>
+                <Controller
+                  name="databaseId"
+                  control={control}
+                  render={({ field }) => (
+                    <DatabasePlanPicker
+                      value={field.value}
+                      onChange={(id, db) => void onDatabaseChange(id, db)}
+                      disabled={!canWrite || loadingPlan}
+                      invalid={!!errors.databaseId}
+                    />
+                  )}
+                />
               </Field>
               <Field label="Plan name" htmlFor="name" required error={errors.name?.message}>
                 <Input

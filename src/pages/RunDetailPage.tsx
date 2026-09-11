@@ -7,6 +7,7 @@ import { StatusBadge } from "../components/workflow/StatusBadge";
 import { isActiveJob, jobDurationSeconds } from "../components/workflow/jobStatus";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useToast } from "../components/toast/ToastProvider";
 import { formatDuration, runShortId, workflowSlug } from "../lib/workflow";
 import type { JobDetailResource, JobResultResource, PlanServiceResource } from "../types/api";
 import { roleHasPermission } from "../types/api";
@@ -14,7 +15,10 @@ import { roleHasPermission } from "../types/api";
 export function RunDetailPage() {
   const { databaseId, jobId } = useParams<{ databaseId: string; jobId: string }>();
   const { user } = useAuth();
+  const toast = useToast();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
+  const canDownload = user ? roleHasPermission(user.role, "evidence:read") : false;
+  const [downloading, setDownloading] = useState(false);
 
   const [job, setJob] = useState<JobDetailResource | null>(null);
   const [service, setService] = useState<PlanServiceResource | null>(null);
@@ -57,6 +61,24 @@ export function RunDetailPage() {
   const slug = service ? workflowSlug(service) : job?.databaseName ?? "workflow";
   const passChecks = job?.results.filter((r) => r.status === "pass").length ?? 0;
   const totalChecks = job?.results.length ?? 0;
+  const reportReady =
+    job != null && ["pass", "fail", "error"].includes(job.status);
+
+  async function downloadReport() {
+    if (!job || !reportReady) return;
+    setDownloading(true);
+    try {
+      await api.downloadJobReport(job.id);
+      toast.success("Report downloaded", "JSON evidence file saved.");
+    } catch (err) {
+      toast.error(
+        "Download failed",
+        err instanceof Error ? err.message : "Could not download report"
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -96,23 +118,35 @@ export function RunDetailPage() {
                   : ""}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <button
                 type="button"
                 onClick={() => void load()}
                 className="rounded-md border border-slate-300 bg-white p-2"
+                aria-label="Refresh"
               >
                 <RefreshCw size={16} />
               </button>
-              <button
-                type="button"
-                disabled
-                title="Coming soon"
-                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-400"
-              >
-                <Download size={14} />
-                Download report
-              </button>
+              {canDownload && (
+                <button
+                  type="button"
+                  disabled={!reportReady || downloading}
+                  onClick={() => void downloadReport()}
+                  title={
+                    reportReady
+                      ? "Download signed JSON report"
+                      : "Available when the run finishes"
+                  }
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400 sm:flex-none hover:bg-slate-50 disabled:hover:bg-white"
+                >
+                  {downloading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  Download report
+                </button>
+              )}
               {canRun && (
                 <button
                   type="button"
