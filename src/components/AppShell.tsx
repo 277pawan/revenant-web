@@ -17,7 +17,7 @@ import { useAuth } from "../lib/auth";
 const mainNav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/databases", label: "Databases", icon: Database },
-  { to: "/jobs", label: "Jobs", icon: PlayCircle },
+  { to: "/workflows", label: "Workflows", icon: PlayCircle },
   { to: "/schedules", label: "Schedules", icon: Calendar, soon: true },
   { to: "/evidence", label: "Evidence Vault", icon: FileCheck, soon: true },
   { to: "/runners", label: "Runners", icon: Server, soon: true },
@@ -26,7 +26,7 @@ const mainNav = [
 const settingsNav = [
   { to: "/settings/validation-plans", label: "Validation Plans", icon: FileCode2 },
   { to: "/settings/team", label: "Team & Roles", icon: Users },
-  { to: "/settings/runners", label: "Agent Box", icon: Server },
+  { to: "/settings/runners", label: "Services", icon: Server },
   { label: "General", soon: true },
   { label: "Credentials", soon: true },
   { label: "API Tokens", soon: true },

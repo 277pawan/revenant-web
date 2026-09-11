@@ -2,7 +2,8 @@ import type {
   AuthUser,
   CreateDatabaseRequest,
   CreateJobRequest,
-  CreateRunnerRequest,
+  PlanServicesResponse,
+  IssueRunnerTokenResponse,
   DatabaseResource,
   InviteTeamMemberRequest,
   JobDetailResource,
@@ -11,7 +12,6 @@ import type {
   LoginResponse,
   Paginated,
   RegisterRequest,
-  RunnerResource,
   TeamMemberResource,
   UpdateDatabaseRequest,
   UpdateTeamMemberRequest,
@@ -168,17 +168,13 @@ export const api = {
     return request("/api/v1/jobs", { method: "POST", body: JSON.stringify(body) });
   },
 
-  listRunners(page = 1, pageSize = 20): Promise<Paginated<RunnerResource>> {
-    return request(withQuery("/api/v1/runners", { page, pageSize }));
+  listPlanServices(): Promise<PlanServicesResponse> {
+    return request("/api/v1/runners/services");
   },
 
-  createRunner(
-    body: CreateRunnerRequest
-  ): Promise<{ runner: RunnerResource & { token: string } }> {
-    return request("/api/v1/runners", { method: "POST", body: JSON.stringify(body) });
-  },
-
-  revokeRunner(id: string): Promise<void> {
-    return request(`/api/v1/runners/${id}`, { method: "DELETE" });
+  issueRunnerToken(databaseId: string): Promise<IssueRunnerTokenResponse> {
+    return request(`/api/v1/runners/databases/${databaseId}/issue-token`, {
+      method: "POST",
+    });
   },
 };

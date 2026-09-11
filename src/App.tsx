@@ -1,5 +1,7 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./lib/auth";
+import { api } from "./lib/api";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DatabasesPage } from "./pages/DatabasesPage";
@@ -7,9 +9,10 @@ import { DatabaseWizardPage } from "./pages/DatabaseWizardPage";
 import { DatabaseEditPage } from "./pages/DatabaseEditPage";
 import { ValidationPlansPage } from "./pages/ValidationPlansPage";
 import { TeamPage } from "./pages/TeamPage";
-import { JobsPage } from "./pages/JobsPage";
-import { JobDetailPage } from "./pages/JobDetailPage";
 import { RunnersPage } from "./pages/RunnersPage";
+import { WorkflowsListPage } from "./pages/WorkflowsListPage";
+import { WorkflowDetailPage } from "./pages/WorkflowDetailPage";
+import { RunDetailPage } from "./pages/RunDetailPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -22,6 +25,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   return children;
+}
+
+function LegacyJobRedirect() {
+  const { id } = useParams<{ id: string }>();
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    void api.getJob(id).then((res) => {
+      setTarget(`/workflows/${res.job.databaseId}/runs/${res.job.id}`);
+    });
+  }, [id]);
+
+  if (!target) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">
+        Loading…
+      </div>
+    );
+  }
+  return <Navigate to={target} replace />;
 }
 
 export function App() {
@@ -61,18 +85,35 @@ export function App() {
         }
       />
       <Route
-        path="/jobs"
+        path="/workflows"
         element={
           <ProtectedRoute>
-            <JobsPage />
+            <WorkflowsListPage />
           </ProtectedRoute>
         }
       />
       <Route
+        path="/workflows/:databaseId"
+        element={
+          <ProtectedRoute>
+            <WorkflowDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/workflows/:databaseId/runs/:jobId"
+        element={
+          <ProtectedRoute>
+            <RunDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/jobs" element={<Navigate to="/workflows" replace />} />
+      <Route
         path="/jobs/:id"
         element={
           <ProtectedRoute>
-            <JobDetailPage />
+            <LegacyJobRedirect />
           </ProtectedRoute>
         }
       />

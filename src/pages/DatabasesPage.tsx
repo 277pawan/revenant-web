@@ -90,7 +90,7 @@ export function DatabasesPage() {
     try {
       const { job } = await api.createJob({ databaseId: db.id });
       toast.success("Validation started", `Job queued for ${db.name}.`);
-      navigate(`/jobs/${job.id}`);
+      navigate(`/workflows/${job.databaseId}/runs/${job.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to start job";
       setError(message);

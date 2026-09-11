@@ -172,6 +172,31 @@ export type JobCheckStatus = "pass" | "fail" | "skip";
 
 export type RunnerKind = "agent" | "ci";
 
+export interface PlanServiceRunner {
+  id: string;
+  tokenPrefix: string;
+  lastSeenAt: string | null;
+  kind: RunnerKind | string;
+}
+
+export interface PlanServiceResource {
+  databaseId: string;
+  databaseName: string;
+  planName: string;
+  runner: PlanServiceRunner | null;
+  jobs: JobResource[];
+}
+
+export interface PlanServicesResponse {
+  services: PlanServiceResource[];
+}
+
+export interface IssueRunnerTokenResponse {
+  token: string;
+  runnerId: string;
+  rotated: boolean;
+}
+
 export interface JobResource {
   id: string;
   databaseId: string;
@@ -206,17 +231,3 @@ export interface CreateJobRequest {
   databaseId: string;
 }
 
-export interface RunnerResource {
-  id: string;
-  name: string;
-  kind: RunnerKind | string;
-  tokenPrefix: string;
-  lastSeenAt: string | null;
-  createdAt: string;
-  revokedAt: string | null;
-}
-
-export interface CreateRunnerRequest {
-  name: string;
-  kind: RunnerKind;
-}
