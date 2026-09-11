@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useToast } from "../components/toast/ToastProvider";
 
 export function LoginPage() {
   const { user, login, register } = useAuth();
+  const toast = useToast();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,11 +22,15 @@ export function LoginPage() {
     try {
       if (mode === "login") {
         await login({ email, password });
+        toast.success("Welcome back", "Your control plane session is ready.");
       } else {
         await register({ organizationName: orgName, email, password });
+        toast.success("Organization created", "You’re signed in and ready to add a database.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      const message = err instanceof Error ? err.message : "Request failed";
+      setError(message);
+      toast.error(mode === "login" ? "Sign-in failed" : "Registration failed", message);
     } finally {
       setLoading(false);
     }

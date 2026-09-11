@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Play, RefreshCw } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { PaginationBar } from "../components/PaginationBar";
+import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -50,6 +51,7 @@ function ExecutionBadge({ mode }: { mode: string | null }) {
 
 export function JobsPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
 
   const [jobs, setJobs] = useState<JobResource[]>([]);
@@ -103,10 +105,13 @@ export function JobsPage() {
     setRunning(true);
     setError(null);
     try {
-      await api.createJob({ databaseId: selectedDb });
+      const { job } = await api.createJob({ databaseId: selectedDb });
+      toast.success("Job queued", `${job.databaseName} is waiting for a worker.`);
       await load(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start job");
+      const message = err instanceof Error ? err.message : "Failed to start job";
+      setError(message);
+      toast.error("Could not start job", message);
     } finally {
       setRunning(false);
     }
@@ -118,8 +123,8 @@ export function JobsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Jobs</h1>
           <p className="mt-1 text-sm text-slate-600">
-            Restore validation runs. Stub = simulated. Use Settings → Runners for real agent/CI
-            tokens (see RUNNERS.md).
+            Restore validation runs. Connect Agent Box under Settings so jobs execute
+            off your web servers (local demos can use the embedded worker).
           </p>
         </div>
         <button

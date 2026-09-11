@@ -13,3 +13,16 @@ code,
 .font-mono {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+@keyframes revenant-toast-in {
+  from {
+    opacity: 0;
+    transform: translate3d(12px, -12px, 0) scale(0.96);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}

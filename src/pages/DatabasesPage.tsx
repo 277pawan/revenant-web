@@ -4,6 +4,7 @@ import { Database, FileCode2, Lock, Pencil, Play, Plus, Search, Trash2 } from "l
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
+import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -21,6 +22,7 @@ const emptyPagination: PaginationMeta = {
 
 export function DatabasesPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const canWrite = user ? roleHasPermission(user.role, "databases:write") : false;
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
@@ -69,10 +71,13 @@ export function DatabasesPage() {
     setDeleting(true);
     try {
       await api.deleteDatabase(deleteTarget.id);
+      toast.success("Database removed", `“${deleteTarget.name}” is no longer in this org.`);
       setDeleteTarget(null);
       await load(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
+      const message = err instanceof Error ? err.message : "Failed to delete";
+      setError(message);
+      toast.error("Delete failed", message);
     } finally {
       setDeleting(false);
     }
@@ -84,9 +89,12 @@ export function DatabasesPage() {
     setError(null);
     try {
       const { job } = await api.createJob({ databaseId: db.id });
+      toast.success("Validation started", `Job queued for ${db.name}.`);
       navigate(`/jobs/${job.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start job");
+      const message = err instanceof Error ? err.message : "Failed to start job";
+      setError(message);
+      toast.error("Could not start validation", message);
     } finally {
       setRunningId(null);
     }

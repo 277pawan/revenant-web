@@ -39,14 +39,15 @@ const planFormSchema = z.object({
 
 type PlanFormValues = z.infer<typeof planFormSchema>;
 
-const DEFAULT_YAML = `version: 1
+const DEFAULT_YAML = `plan: cloud-validation
 database:
-  url: \${DATABASE_URL}
+  engine: postgres
+  connection: \${DATABASE_URL}
 checks:
   - type: connect
   - type: schema
-    tables:
-      - public
+    expect_tables:
+      - customers
 `;
 
 export function ValidationPlansPage() {

@@ -7,6 +7,7 @@ import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
 import { Field, Input, Select } from "../components/ui/Field";
+import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -26,6 +27,7 @@ type InviteValues = z.infer<typeof inviteSchema>;
 
 export function TeamPage() {
   const { user } = useAuth();
+  const toast = useToast();
   const canManage = user ? roleHasPermission(user.role, "team:manage") : false;
 
   const [members, setMembers] = useState<TeamMemberResource[]>([]);
@@ -77,11 +79,14 @@ export function TeamPage() {
     setError(null);
     try {
       await api.inviteTeamMember(values);
+      toast.success("Teammate invited", `${values.email} can sign in with the password you set.`);
       reset({ email: "", password: "", role: "executor" });
       setShowInvite(false);
       await load(1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to invite");
+      const message = err instanceof Error ? err.message : "Failed to invite";
+      setError(message);
+      toast.error("Invite failed", message);
     } finally {
       setSaving(false);
     }
@@ -92,9 +97,12 @@ export function TeamPage() {
     setError(null);
     try {
       await api.updateTeamMember(member.id, { role });
+      toast.success("Role updated", `${member.email} is now ${role}.`);
       await load(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update role");
+      const message = err instanceof Error ? err.message : "Failed to update role";
+      setError(message);
+      toast.error("Role update failed", message);
     }
   }
 
@@ -103,10 +111,13 @@ export function TeamPage() {
     setRemoving(true);
     try {
       await api.removeTeamMember(removeTarget.id);
+      toast.warning("Member removed", `${removeTarget.email} no longer has access.`);
       setRemoveTarget(null);
       await load(page);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove member");
+      const message = err instanceof Error ? err.message : "Failed to remove member";
+      setError(message);
+      toast.error("Remove failed", message);
     } finally {
       setRemoving(false);
     }

@@ -26,7 +26,7 @@ const mainNav = [
 const settingsNav = [
   { to: "/settings/validation-plans", label: "Validation Plans", icon: FileCode2 },
   { to: "/settings/team", label: "Team & Roles", icon: Users },
-  { to: "/settings/runners", label: "Runners", icon: Server },
+  { to: "/settings/runners", label: "Agent Box", icon: Server },
   { label: "General", soon: true },
   { label: "Credentials", soon: true },
   { label: "API Tokens", soon: true },
