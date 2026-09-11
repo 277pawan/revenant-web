@@ -10,6 +10,12 @@ export type Permission =
   | "plans:write"
   | "jobs:read"
   | "jobs:run"
+  | "schedules:read"
+  | "schedules:write"
+  | "evidence:read"
+  | "webhooks:read"
+  | "webhooks:write"
+  | "audit:read"
   | "team:manage"
   | "team:read";
 
@@ -22,6 +28,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "plans:write",
     "jobs:read",
     "jobs:run",
+    "schedules:read",
+    "schedules:write",
+    "evidence:read",
+    "webhooks:read",
+    "webhooks:write",
+    "audit:read",
     "team:manage",
     "team:read",
   ],
@@ -31,9 +43,19 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "plans:write",
     "jobs:read",
     "jobs:run",
+    "schedules:read",
+    "schedules:write",
+    "evidence:read",
     "team:read",
   ],
-  viewer: ["databases:read", "plans:read", "jobs:read", "team:read"],
+  viewer: [
+    "databases:read",
+    "plans:read",
+    "jobs:read",
+    "schedules:read",
+    "evidence:read",
+    "team:read",
+  ],
 } as const;
 
 export function roleHasPermission(role: UserRole, permission: Permission): boolean {
@@ -229,5 +251,83 @@ export interface JobDetailResource extends JobResource {
 
 export interface CreateJobRequest {
   databaseId: string;
+}
+
+export interface ScheduleResource {
+  id: string;
+  databaseId: string;
+  databaseName: string;
+  name: string;
+  cronExpression: string;
+  timezone: string;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateScheduleRequest {
+  databaseId: string;
+  name: string;
+  cronExpression: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface UpdateScheduleRequest {
+  name?: string;
+  cronExpression?: string;
+  timezone?: string;
+  enabled?: boolean;
+}
+
+export interface EvidenceArtifactResource {
+  id: string;
+  jobId: string;
+  databaseName: string;
+  kind: string;
+  sha256: string;
+  byteSize: number;
+  signedAt: string;
+  createdAt: string;
+}
+
+export type WebhookProvider = "slack" | "email" | "http";
+
+export type WebhookEventType = "job.pass" | "job.fail" | "job.error";
+
+export interface WebhookEndpointResource {
+  id: string;
+  name: string;
+  provider: WebhookProvider | string;
+  config: Record<string, unknown>;
+  events: WebhookEventType[] | string[];
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWebhookRequest {
+  name: string;
+  provider: WebhookProvider;
+  config: Record<string, unknown>;
+  events?: WebhookEventType[];
+  enabled?: boolean;
+}
+
+export interface CreateWebhookResponse {
+  endpoint: WebhookEndpointResource;
+  secret?: string;
+}
+
+export interface AuditEventResource {
+  id: string;
+  actorUserId: string | null;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
 }
 

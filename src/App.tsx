@@ -13,6 +13,10 @@ import { RunnersPage } from "./pages/RunnersPage";
 import { WorkflowsListPage } from "./pages/WorkflowsListPage";
 import { WorkflowDetailPage } from "./pages/WorkflowDetailPage";
 import { RunDetailPage } from "./pages/RunDetailPage";
+import { SchedulesPage } from "./pages/SchedulesPage";
+import { EvidenceVaultPage } from "./pages/EvidenceVaultPage";
+import { WebhooksPage } from "./pages/WebhooksPage";
+import { AuditLogPage } from "./pages/AuditLogPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -138,6 +142,38 @@ export function App() {
         element={
           <ProtectedRoute>
             <RunnersPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/schedules"
+        element={
+          <ProtectedRoute>
+            <SchedulesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/evidence"
+        element={
+          <ProtectedRoute>
+            <EvidenceVaultPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/webhooks"
+        element={
+          <ProtectedRoute>
+            <WebhooksPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/audit-log"
+        element={
+          <ProtectedRoute>
+            <AuditLogPage />
           </ProtectedRoute>
         }
       />

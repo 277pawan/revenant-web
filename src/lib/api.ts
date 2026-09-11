@@ -1,7 +1,12 @@
 import type {
+  AuditEventResource,
   AuthUser,
   CreateDatabaseRequest,
   CreateJobRequest,
+  CreateScheduleRequest,
+  CreateWebhookRequest,
+  CreateWebhookResponse,
+  EvidenceArtifactResource,
   PlanServicesResponse,
   IssueRunnerTokenResponse,
   DatabaseResource,
@@ -12,11 +17,14 @@ import type {
   LoginResponse,
   Paginated,
   RegisterRequest,
+  ScheduleResource,
   TeamMemberResource,
   UpdateDatabaseRequest,
+  UpdateScheduleRequest,
   UpdateTeamMemberRequest,
   UpsertValidationPlanRequest,
   ValidationPlanResource,
+  WebhookEndpointResource,
 } from "../types/api";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
@@ -176,5 +184,80 @@ export const api = {
     return request(`/api/v1/runners/databases/${databaseId}/issue-token`, {
       method: "POST",
     });
+  },
+
+  listSchedules(page = 1, pageSize = 20): Promise<Paginated<ScheduleResource>> {
+    return request(withQuery("/api/v1/schedules", { page, pageSize }));
+  },
+
+  createSchedule(body: CreateScheduleRequest): Promise<{ schedule: ScheduleResource }> {
+    return request("/api/v1/schedules", { method: "POST", body: JSON.stringify(body) });
+  },
+
+  updateSchedule(
+    id: string,
+    body: UpdateScheduleRequest
+  ): Promise<{ schedule: ScheduleResource }> {
+    return request(`/api/v1/schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteSchedule(id: string): Promise<void> {
+    return request(`/api/v1/schedules/${id}`, { method: "DELETE" });
+  },
+
+  listEvidence(page = 1, pageSize = 20): Promise<Paginated<EvidenceArtifactResource>> {
+    return request(withQuery("/api/v1/evidence", { page, pageSize }));
+  },
+
+  async downloadEvidence(id: string): Promise<void> {
+    const token = localStorage.getItem(TOKEN_KEY);
+    const res = await fetch(`${API_URL}/api/v1/evidence/${id}/download`, {
+      credentials: "include",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? `Download failed (${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `evidence-${id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  listWebhooks(page = 1, pageSize = 20): Promise<Paginated<WebhookEndpointResource>> {
+    return request(withQuery("/api/v1/webhooks", { page, pageSize }));
+  },
+
+  createWebhook(body: CreateWebhookRequest): Promise<CreateWebhookResponse> {
+    return request("/api/v1/webhooks", { method: "POST", body: JSON.stringify(body) });
+  },
+
+  listWebhookProviders(): Promise<{ providers: Array<{ id: string; name: string; description: string; setupHint: string }> }> {
+    return request("/api/v1/webhooks/providers");
+  },
+
+  updateWebhook(
+    id: string,
+    body: Partial<CreateWebhookRequest>
+  ): Promise<{ endpoint: WebhookEndpointResource }> {
+    return request(`/api/v1/webhooks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteWebhook(id: string): Promise<void> {
+    return request(`/api/v1/webhooks/${id}`, { method: "DELETE" });
+  },
+
+  listAuditEvents(page = 1, pageSize = 20): Promise<Paginated<AuditEventResource>> {
+    return request(withQuery("/api/v1/audit", { page, pageSize }));
   },
 };

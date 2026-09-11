@@ -14,13 +14,17 @@ import {
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 
-const mainNav = [
+const mainNav: Array<{
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  soon?: boolean;
+}> = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/databases", label: "Databases", icon: Database },
   { to: "/workflows", label: "Workflows", icon: PlayCircle },
-  { to: "/schedules", label: "Schedules", icon: Calendar, soon: true },
-  { to: "/evidence", label: "Evidence Vault", icon: FileCheck, soon: true },
-  { to: "/runners", label: "Runners", icon: Server, soon: true },
+  { to: "/schedules", label: "Schedules", icon: Calendar },
+  { to: "/evidence", label: "Evidence Vault", icon: FileCheck },
 ];
 
 const settingsNav = [
@@ -30,8 +34,8 @@ const settingsNav = [
   { label: "General", soon: true },
   { label: "Credentials", soon: true },
   { label: "API Tokens", soon: true },
-  { label: "Webhooks", soon: true },
-  { label: "Audit Log", soon: true },
+  { to: "/settings/webhooks", label: "Integrations", icon: Settings },
+  { to: "/settings/audit-log", label: "Audit Log", icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
