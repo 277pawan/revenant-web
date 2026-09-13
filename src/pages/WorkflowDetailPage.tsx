@@ -59,12 +59,17 @@ export function WorkflowDetailPage() {
     return () => clearInterval(t);
   }, [hasBusy, load]);
 
-  async function runWorkflow() {
+  async function runWorkflow(drillKind: "full" | "verify" = "full") {
     if (!databaseId || !canRun) return;
     setRunning(true);
     try {
-      await api.createJob({ databaseId });
-      toast.success("Workflow started", "Run queued.");
+      await api.createJob({ databaseId, drillKind });
+      toast.success(
+        drillKind === "full" ? "Full restore drill queued" : "Verify queued",
+        drillKind === "full"
+          ? "Snapshot → restore → validate → cleanup (AWS) or checks on direct Postgres."
+          : "Using the latest snapshot / live connection."
+      );
       await load();
     } catch (err) {
       toast.error(
@@ -100,6 +105,7 @@ export function WorkflowDetailPage() {
     service.runner?.lastSeenAt &&
     Date.now() - new Date(service.runner.lastSeenAt).getTime() < 60_000;
 
+  const awsMode = service.recoveryMode === "aws-rds";
   const passCount = service.jobs.filter((j) => j.status === "pass").length;
   const totalRuns = service.jobs.length;
 
@@ -132,15 +138,31 @@ export function WorkflowDetailPage() {
             <MoreVertical size={16} />
           </button>
           {canRun && (
-            <button
-              type="button"
-              disabled={running}
-              onClick={() => void runWorkflow()}
-              className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              <Play size={16} />
-              {running ? "Queuing…" : "Run workflow"}
-            </button>
+            <>
+              {awsMode && (
+                <button
+                  type="button"
+                  disabled={running}
+                  onClick={() => void runWorkflow("verify")}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Verify latest snapshot
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={running}
+                onClick={() => void runWorkflow("full")}
+                className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                <Play size={16} />
+                {running
+                  ? "Queuing…"
+                  : awsMode
+                    ? "Run full restore drill"
+                    : "Run restore drill"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -160,8 +182,12 @@ export function WorkflowDetailPage() {
               <dd className="font-medium text-slate-900">{service.planName}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Schedule</dt>
-              <dd className="text-slate-900">Manual</dd>
+              <dt className="text-slate-500">Drill</dt>
+              <dd className="text-right text-slate-900">
+                {awsMode
+                  ? "Full: snapshot → restore sandbox → validate → reap"
+                  : "Direct Postgres validation"}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Validation plan</dt>

@@ -489,6 +489,91 @@ code,
   animation: auth-caret-blink 1s steps(1) infinite;
 }
 
+@keyframes proof-scan {
+  0% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(220%);
+    opacity: 0;
+  }
+}
+
+.proof-drop-busy::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(37, 99, 235, 0.12),
+    transparent
+  );
+  animation: proof-scan 1.4s ease-in-out infinite;
+}
+
+/* Thin scrollbars — light panels */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Dark sidebar nav */
+.scrollbar-sidebar {
+  scrollbar-color: rgba(71, 85, 105, 0.65) transparent;
+}
+
+.scrollbar-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.55);
+}
+
+.scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.75);
+}
+
+/* Animated accordion (grid 0fr → 1fr) */
+.accordion-expand {
+  display: grid;
+  transition: grid-template-rows 0.28s ease-out;
+}
+
+.accordion-expand[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.accordion-expand[data-open="false"] {
+  grid-template-rows: 0fr;
+}
+
+.accordion-expand > .accordion-expand-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .toast-enter,
   .toast-exit,
@@ -515,7 +600,9 @@ code,
   .auth-form-panel,
   .auth-form-shake,
   .auth-success-bloom,
-  .auth-success-ring {
+  .auth-success-ring,
+  .proof-drop-busy::after,
+  .accordion-expand {
     animation: none !important;
     transition: none !important;
   }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download, FileCheck } from "lucide-react";
+import { Download, FileCheck, FileText } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { DateTimeText } from "../components/DateTimeText";
 import { PaginationBar } from "../components/PaginationBar";
@@ -64,12 +64,25 @@ export function EvidenceVaultPage() {
     }
   }
 
+  async function downloadPdf(id: string) {
+    try {
+      await api.downloadEvidencePdf(id);
+      toast.success("PDF saved", "Share the file however you like.");
+    } catch (err) {
+      toast.error(
+        "PDF failed",
+        err instanceof Error ? err.message : "Could not download PDF"
+      );
+    }
+  }
+
   return (
     <AppShell>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Evidence Vault</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Signed JSON reports from completed validation runs. Times shown in{" "}
+          Signed reports from completed drills. Download a branded PDF to share
+          yourself, or JSON for tooling. Times shown in{" "}
           <span className="font-medium text-slate-800">{getUserTimezone()}</span>.
         </p>
       </div>
@@ -130,14 +143,24 @@ export function EvidenceVaultPage() {
                     <DateTimeText value={a.signedAt} />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => void download(a.id)}
-                      className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
-                    >
-                      <Download size={14} />
-                      Download
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void downloadPdf(a.id)}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                      >
+                        <FileText size={14} />
+                        PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void download(a.id)}
+                        className="inline-flex items-center gap-1 text-xs text-slate-600 hover:underline"
+                      >
+                        <Download size={14} />
+                        JSON
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

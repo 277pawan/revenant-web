@@ -88,8 +88,8 @@ export function DatabasesPage() {
     setRunningId(db.id);
     setError(null);
     try {
-      const { job } = await api.createJob({ databaseId: db.id });
-      toast.success("Validation started", `Job queued for ${db.name}.`);
+      const { job } = await api.createJob({ databaseId: db.id, drillKind: "full" });
+      toast.success("Full restore drill queued", `Job queued for ${db.name}.`);
       navigate(`/workflows/${job.databaseId}/runs/${job.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to start job";

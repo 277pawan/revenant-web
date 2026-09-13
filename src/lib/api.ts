@@ -9,6 +9,8 @@ import type {
   AuthProvidersResponse,
   DashboardOverview,
   EvidenceArtifactResource,
+  GenerateValidationYamlRequest,
+  GenerateValidationYamlResponse,
   InvitePreviewResponse,
   PlanServicesResponse,
   IssueRunnerTokenResponse,
@@ -27,6 +29,7 @@ import type {
   UpdateTeamMemberRequest,
   UpsertValidationPlanRequest,
   ValidationPlanResource,
+  YamlComposerStatus,
   WebhookEndpointResource,
 } from "../types/api";
 
@@ -73,6 +76,24 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(data.error ?? `Request failed (${res.status})`);
   }
   return data as T;
+}
+
+async function downloadAttachment(path: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, {
+    credentials: "include",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? `Download failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export const api = {
@@ -134,8 +155,14 @@ export const api = {
     return request(`/api/v1/databases/${id}`, { method: "DELETE" });
   },
 
-  listValidationPlans(page = 1, pageSize = 20): Promise<Paginated<ValidationPlanResource>> {
-    return request(withQuery("/api/v1/validation-plans", { page, pageSize }));
+  listValidationPlans(
+    page = 1,
+    pageSize = 10,
+    search?: string
+  ): Promise<Paginated<ValidationPlanResource>> {
+    return request(
+      withQuery("/api/v1/validation-plans", { page, pageSize, search })
+    );
   },
 
   getValidationPlan(databaseId: string): Promise<{ plan: ValidationPlanResource }> {
@@ -155,6 +182,19 @@ export const api = {
   deleteValidationPlan(databaseId: string): Promise<void> {
     return request(`/api/v1/databases/${databaseId}/validation-plan`, {
       method: "DELETE",
+    });
+  },
+
+  getYamlComposerStatus(): Promise<YamlComposerStatus> {
+    return request("/api/v1/validation-plans/composer");
+  },
+
+  composeValidationYaml(
+    body: GenerateValidationYamlRequest
+  ): Promise<GenerateValidationYamlResponse> {
+    return request("/api/v1/validation-plans/compose", {
+      method: "POST",
+      body: JSON.stringify(body),
     });
   },
 
@@ -236,41 +276,31 @@ export const api = {
   },
 
   async downloadJobReport(jobId: string): Promise<void> {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const res = await fetch(`${API_URL}/api/v1/jobs/${jobId}/evidence/download`, {
-      credentials: "include",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error ?? `Download failed (${res.status})`);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `revenant-report-${jobId}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadAttachment(
+      `/api/v1/jobs/${jobId}/evidence/download`,
+      `revenant-report-${jobId}.json`
+    );
+  },
+
+  async downloadJobReportPdf(jobId: string): Promise<void> {
+    await downloadAttachment(
+      `/api/v1/jobs/${jobId}/evidence/pdf`,
+      `revenant-evidence-${jobId}.pdf`
+    );
   },
 
   async downloadEvidence(id: string): Promise<void> {
-    const token = localStorage.getItem(TOKEN_KEY);
-    const res = await fetch(`${API_URL}/api/v1/evidence/${id}/download`, {
-      credentials: "include",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error ?? `Download failed (${res.status})`);
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `evidence-${id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await downloadAttachment(
+      `/api/v1/evidence/${id}/download`,
+      `evidence-${id}.json`
+    );
+  },
+
+  async downloadEvidencePdf(id: string): Promise<void> {
+    await downloadAttachment(
+      `/api/v1/evidence/${id}/pdf`,
+      `revenant-evidence-${id}.pdf`
+    );
   },
 
   listWebhooks(page = 1, pageSize = 20): Promise<Paginated<WebhookEndpointResource>> {

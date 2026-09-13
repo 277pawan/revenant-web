@@ -187,7 +187,7 @@ export function DashboardPage() {
                   className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-blue-50"
                 >
                   <Play size={16} fill="currentColor" />
-                  Run restore drill
+                  Run full restore drill
                 </Link>
               )}
               <Link

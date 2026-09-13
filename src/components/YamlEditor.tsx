@@ -61,7 +61,11 @@ export function YamlEditor({
   };
 
   return (
-    <div className="overflow-hidden rounded-md border border-slate-300">
+    <div
+      className={`overflow-hidden rounded-md border border-slate-300 ${
+        height === "100%" ? "h-full" : ""
+      }`}
+    >
       <Editor
         height={height}
         defaultLanguage="yaml"

@@ -59,11 +59,22 @@ function AgentServiceCard({
   const status = agentStatus(service.runner?.lastSeenAt ?? null);
   const lastRun = service.jobs[0];
 
-  const dockerCmd = issuedToken
-    ? `docker run -d --restart unless-stopped -e REVENANT_RUNNER_TOKEN=${issuedToken} yourorg/revenant-agent:latest`
-    : service.runner
-      ? `docker run -d --restart unless-stopped -e REVENANT_RUNNER_TOKEN=<your-token> yourorg/revenant-agent:latest`
-      : "";
+  const token = issuedToken ?? "<your-token>";
+  const hasToken = Boolean(issuedToken);
+  const agentImage =
+    import.meta.env.VITE_AGENT_IMAGE?.trim() || "277pawan/revenant-agent:latest";
+
+  /** Laptop only: container cannot use 127.0.0.1 to reach the host API. */
+  const dockerLocalCmd = `docker run -d --restart unless-stopped \\
+  --add-host=host.docker.internal:host-gateway \\
+  -e REVENANT_API_URL=http://host.docker.internal:8080 \\
+  -e REVENANT_RUNNER_TOKEN=${token} \\
+  revenant-agent:local`;
+
+  /** Customers: token only. API URL is baked into the published image. */
+  const dockerCustomerCmd = `docker run -d --restart unless-stopped \\
+  -e REVENANT_RUNNER_TOKEN=${token} \\
+  ${agentImage}`;
 
   const localCmd = issuedToken
     ? `REVENANT_RUNNER_TOKEN=${issuedToken} npm start`
@@ -150,12 +161,35 @@ function AgentServiceCard({
 
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Docker
+            Docker — this laptop (API on localhost)
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            <code className="font-mono">revenant-agent:local</code> is a local image name, not
+            Docker Hub. <code className="font-mono">--add-host</code> is only so the container can
+            reach your machine&apos;s API — customers never need it.
           </p>
           <pre className="mt-1 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-[11px]">
-            {dockerCmd || "Issue a token first"}
+            {hasToken || service.runner ? dockerLocalCmd : "Issue a token first"}
           </pre>
-          {issuedToken && <CopyButton text={dockerCmd} label="Docker cmd" />}
+          {(hasToken || service.runner) && (
+            <CopyButton text={dockerLocalCmd} label="Local Docker" />
+          )}
+        </div>
+
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Docker — customers (token only)
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            They never set an API URL. It is baked into the image when we publish. To point at a
+            new API later, we push a new image — they pull and keep the same token.
+          </p>
+          <pre className="mt-1 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-[11px]">
+            {hasToken || service.runner ? dockerCustomerCmd : "Issue a token first"}
+          </pre>
+          {(hasToken || service.runner) && (
+            <CopyButton text={dockerCustomerCmd} label="Customer Docker" />
+          )}
         </div>
 
         {lastRun && (

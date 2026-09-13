@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChevronRight, Download, Loader2, RefreshCw } from "lucide-react";
+import { ChevronRight, Download, FileText, Loader2, RefreshCw } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { RestorePipelineGraph } from "../components/workflow/RestorePipelineGraph";
 import { StatusBadge } from "../components/workflow/StatusBadge";
@@ -18,7 +18,7 @@ export function RunDetailPage() {
   const toast = useToast();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
   const canDownload = user ? roleHasPermission(user.role, "evidence:read") : false;
-  const [downloading, setDownloading] = useState(false);
+  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
 
   const [job, setJob] = useState<JobDetailResource | null>(null);
   const [service, setService] = useState<PlanServiceResource | null>(null);
@@ -66,7 +66,7 @@ export function RunDetailPage() {
 
   async function downloadReport() {
     if (!job || !reportReady) return;
-    setDownloading(true);
+    setDownloading("json");
     try {
       await api.downloadJobReport(job.id);
       toast.success("Report downloaded", "JSON evidence file saved.");
@@ -76,7 +76,23 @@ export function RunDetailPage() {
         err instanceof Error ? err.message : "Could not download report"
       );
     } finally {
-      setDownloading(false);
+      setDownloading(null);
+    }
+  }
+
+  async function downloadPdf() {
+    if (!job || !reportReady) return;
+    setDownloading("pdf");
+    try {
+      await api.downloadJobReportPdf(job.id);
+      toast.success("PDF saved", "Share the certificate yourself — no public link.");
+    } catch (err) {
+      toast.error(
+        "PDF failed",
+        err instanceof Error ? err.message : "Could not download PDF"
+      );
+    } finally {
+      setDownloading(null);
     }
   }
 
@@ -128,24 +144,44 @@ export function RunDetailPage() {
                 <RefreshCw size={16} />
               </button>
               {canDownload && (
-                <button
-                  type="button"
-                  disabled={!reportReady || downloading}
-                  onClick={() => void downloadReport()}
-                  title={
-                    reportReady
-                      ? "Download signed JSON report"
-                      : "Available when the run finishes"
-                  }
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400 sm:flex-none hover:bg-slate-50 disabled:hover:bg-white"
-                >
-                  {downloading ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Download size={14} />
-                  )}
-                  Download report
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={!reportReady || downloading !== null}
+                    onClick={() => void downloadPdf()}
+                    title={
+                      reportReady
+                        ? "Download branded PDF certificate"
+                        : "Available when the run finishes"
+                    }
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none hover:bg-blue-700"
+                  >
+                    {downloading === "pdf" ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <FileText size={14} />
+                    )}
+                    Download PDF
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!reportReady || downloading !== null}
+                    onClick={() => void downloadReport()}
+                    title={
+                      reportReady
+                        ? "Download signed JSON report"
+                        : "Available when the run finishes"
+                    }
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:cursor-not-allowed disabled:text-slate-400 sm:flex-none hover:bg-slate-50 disabled:hover:bg-white"
+                  >
+                    {downloading === "json" ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Download size={14} />
+                    )}
+                    JSON
+                  </button>
+                </>
               )}
               {canRun && (
                 <button

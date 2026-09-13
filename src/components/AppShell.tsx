@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
+        <nav className="scrollbar-thin scrollbar-sidebar min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
           {mainNav.map((item) =>
             item.soon ? (
               <div
