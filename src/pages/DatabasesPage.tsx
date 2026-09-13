@@ -204,7 +204,7 @@ export function DatabasesPage() {
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Host</th>
+                  <th className="px-4 py-3 font-medium">Target</th>
                   <th className="px-4 py-3 font-medium">Region</th>
                   <th className="px-4 py-3 font-medium">Credentials</th>
                   <th className="px-4 py-3 font-medium">Plan</th>
@@ -220,22 +220,43 @@ export function DatabasesPage() {
                       {db.databaseName && (
                         <div className="font-mono text-xs text-slate-500">{db.databaseName}</div>
                       )}
+                      {db.recoveryMode === "aws-rds" && (
+                        <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-800">
+                          AWS restore
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                      {db.host ? `${db.host}:${db.port ?? 5432}` : "—"}
+                      {db.recoveryMode === "aws-rds"
+                        ? db.rdsSourceIdentifier ?? "—"
+                        : db.host
+                          ? `${db.host}:${db.port ?? 5432}`
+                          : "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{db.region ?? "—"}</td>
                     <td className="px-4 py-3">
-                      {db.hasCredentials ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                          <Lock size={12} />
-                          Encrypted
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
-                          Missing
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {db.hasCredentials ? (
+                          <span className="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                            <Lock size={12} />
+                            DB
+                          </span>
+                        ) : (
+                          <span className="w-fit rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                            No DB secret
+                          </span>
+                        )}
+                        {db.recoveryMode === "aws-rds" &&
+                          (db.hasAwsCredentials ? (
+                            <span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                              AWS keys
+                            </span>
+                          ) : (
+                            <span className="w-fit rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              No AWS keys
+                            </span>
+                          ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {db.hasValidationPlan ? (

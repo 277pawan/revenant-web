@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { Download, FileCheck } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { DateTimeText } from "../components/DateTimeText";
 import { PaginationBar } from "../components/PaginationBar";
+import { TableSearchBar } from "../components/TableSearchBar";
 import { useToast } from "../components/toast/ToastProvider";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { api } from "../lib/api";
+import { getUserTimezone } from "../lib/datetime";
 import type { EvidenceArtifactResource, PaginationMeta } from "../types/api";
 
 export function EvidenceVaultPage() {
@@ -16,14 +20,20 @@ export function EvidenceVaultPage() {
     totalPages: 1,
   });
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (nextPage: number) => {
+  const load = useCallback(async (nextPage: number, searchTerm: string) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.listEvidence(nextPage, 20);
+      const res = await api.listEvidence(
+        nextPage,
+        20,
+        searchTerm.trim() || undefined
+      );
       setArtifacts(res.data);
       setPagination(res.pagination);
       setPage(res.pagination.page);
@@ -35,8 +45,12 @@ export function EvidenceVaultPage() {
   }, []);
 
   useEffect(() => {
-    void load(page);
-  }, [load, page]);
+    setPage(1);
+  }, [debouncedSearch]);
+
+  useEffect(() => {
+    void load(page, debouncedSearch);
+  }, [load, page, debouncedSearch]);
 
   async function download(id: string) {
     try {
@@ -55,7 +69,8 @@ export function EvidenceVaultPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900">Evidence Vault</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Signed JSON reports from completed validation runs.
+          Signed JSON reports from completed validation runs. Times shown in{" "}
+          <span className="font-medium text-slate-800">{getUserTimezone()}</span>.
         </p>
       </div>
 
@@ -66,6 +81,11 @@ export function EvidenceVaultPage() {
       )}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <TableSearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder="Search workflow, job ID, or SHA-256…"
+        />
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
@@ -88,7 +108,9 @@ export function EvidenceVaultPage() {
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
                   <FileCheck className="mx-auto mb-2 text-slate-300" size={32} />
-                  No evidence yet. Reports appear when jobs complete.
+                  {debouncedSearch.trim()
+                    ? `No evidence matches “${debouncedSearch.trim()}”.`
+                    : "No evidence yet. Reports appear when jobs complete."}
                 </td>
               </tr>
             ) : (
@@ -104,8 +126,8 @@ export function EvidenceVaultPage() {
                   <td className="px-4 py-3 text-slate-600">
                     {(a.byteSize / 1024).toFixed(1)} KB
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(a.signedAt).toLocaleString()}
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                    <DateTimeText value={a.signedAt} />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button

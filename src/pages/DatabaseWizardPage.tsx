@@ -30,6 +30,7 @@ export function DatabaseWizardPage() {
     handleSubmit,
     trigger,
     getValues,
+    watch,
     formState: { errors },
   } = useForm<DatabaseWizardValues>({
     resolver: zodResolver(databaseWizardSchema),
@@ -63,13 +64,30 @@ export function DatabaseWizardPage() {
       await api.createDatabase({
         name: values.name.trim(),
         engine: "postgres",
-        host: values.host.trim(),
+        recoveryMode: values.recoveryMode,
+        host: values.host.trim() || undefined,
         port: values.port,
-        databaseName: values.databaseName.trim(),
-        username: values.username.trim(),
+        databaseName: values.databaseName.trim() || undefined,
+        username: values.username.trim() || undefined,
         password: values.password?.trim() || undefined,
         sslMode: values.sslMode,
         region: values.region?.trim() || undefined,
+        rdsSourceIdentifier:
+          values.recoveryMode === "aws-rds"
+            ? values.rdsSourceIdentifier.trim()
+            : undefined,
+        recoveryUseFreetier:
+          values.recoveryMode === "aws-rds" ? values.recoveryUseFreetier : undefined,
+        recoverySandboxInstanceClass:
+          values.recoveryMode === "aws-rds" && values.recoverySandboxInstanceClass.trim()
+            ? values.recoverySandboxInstanceClass.trim()
+            : undefined,
+        awsAccessKeyId:
+          values.recoveryMode === "aws-rds" ? values.awsAccessKeyId.trim() : undefined,
+        awsSecretAccessKey:
+          values.recoveryMode === "aws-rds"
+            ? values.awsSecretAccessKey.trim()
+            : undefined,
         description: values.description?.trim() || undefined,
       });
       navigate("/databases");
@@ -81,6 +99,7 @@ export function DatabaseWizardPage() {
   }
 
   const values = getValues();
+  const recoveryMode = watch("recoveryMode");
 
   return (
     <AppShell>
@@ -121,7 +140,10 @@ export function DatabaseWizardPage() {
             </h2>
             <p className="mt-0.5 text-sm text-slate-500">
               {step === 1 && "How this database appears in your org fleet."}
-              {step === 2 && "How Revenant reaches Postgres. Password is optional but recommended."}
+              {step === 2 &&
+                (recoveryMode === "aws-rds"
+                  ? "AWS snapshot restore drill — same flow as revenant verify in CI."
+                  : "How Revenant reaches Postgres. Password is optional but recommended.")}
               {step === 3 && "Checks will live here in the next phase — you can skip for now."}
               {step === 4 && "Confirm details before writing to the control plane."}
             </p>
@@ -146,10 +168,22 @@ export function DatabaseWizardPage() {
                   </Field>
                 </div>
                 <Field
+                  label="Validation mode"
+                  htmlFor="recoveryMode"
+                  hint="AWS mode restores latest RDS snapshot to a temporary sandbox"
+                  error={errors.recoveryMode?.message}
+                >
+                  <Select id="recoveryMode" invalid={!!errors.recoveryMode} {...register("recoveryMode")}>
+                    <option value="direct">Direct — connect to live Postgres</option>
+                    <option value="aws-rds">AWS RDS — snapshot restore drill</option>
+                  </Select>
+                </Field>
+                <Field
                   label="Region"
                   htmlFor="region"
-                  hint="e.g. eu-west-2 — used for AWS restore drills later"
+                  hint={recoveryMode === "aws-rds" ? "Required — e.g. eu-west-2" : "Optional metadata"}
                   error={errors.region?.message}
+                  required={recoveryMode === "aws-rds"}
                 >
                   <Input
                     id="region"
@@ -181,7 +215,132 @@ export function DatabaseWizardPage() {
               </div>
             )}
 
-            {step === 2 && (
+            {step === 2 && recoveryMode === "aws-rds" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Jobs will find the latest RDS snapshot, restore to a temporary sandbox, run your
+                  validation plan, then tear down — same as{" "}
+                  <code className="rounded bg-white px-1 text-xs">revenant verify</code> in GitHub
+                  Actions.
+                </div>
+                <Field
+                  label="RDS instance identifier"
+                  htmlFor="rdsSourceIdentifier"
+                  required
+                  hint="AWS Console → RDS → Databases → DB identifier"
+                  error={errors.rdsSourceIdentifier?.message}
+                >
+                  <Input
+                    id="rdsSourceIdentifier"
+                    invalid={!!errors.rdsSourceIdentifier}
+                    placeholder="database-1"
+                    className="font-mono text-xs"
+                    {...register("rdsSourceIdentifier")}
+                  />
+                </Field>
+                <Field
+                  label="Sandbox instance class"
+                  htmlFor="recoverySandboxInstanceClass"
+                  hint="Leave blank to use free tier (db.t3.micro) when enabled"
+                  error={errors.recoverySandboxInstanceClass?.message}
+                >
+                  <Input
+                    id="recoverySandboxInstanceClass"
+                    invalid={!!errors.recoverySandboxInstanceClass}
+                    placeholder="db.t3.micro"
+                    className="font-mono text-xs"
+                    {...register("recoverySandboxInstanceClass")}
+                  />
+                </Field>
+                <div className="sm:col-span-2 flex items-center gap-2">
+                  <input
+                    id="recoveryUseFreetier"
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-slate-300"
+                    {...register("recoveryUseFreetier")}
+                  />
+                  <label htmlFor="recoveryUseFreetier" className="text-sm text-slate-700">
+                    Use AWS free-tier compatible sandbox (db.t3.micro)
+                  </label>
+                </div>
+                <Field
+                  label="RDS master username"
+                  htmlFor="username"
+                  required
+                  hint="Used as SANDBOX_USER after restore"
+                  error={errors.username?.message}
+                >
+                  <Input
+                    id="username"
+                    invalid={!!errors.username}
+                    placeholder="postgres"
+                    autoComplete="off"
+                    {...register("username")}
+                  />
+                </Field>
+                <Field
+                  label="Database name"
+                  htmlFor="databaseName"
+                  required
+                  hint="Used as SANDBOX_DBNAME after restore"
+                  error={errors.databaseName?.message}
+                >
+                  <Input
+                    id="databaseName"
+                    invalid={!!errors.databaseName}
+                    placeholder="postgres"
+                    {...register("databaseName")}
+                  />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field
+                    label="RDS master password"
+                    htmlFor="password"
+                    required
+                    error={errors.password?.message}
+                  >
+                    <Input
+                      id="password"
+                      type="password"
+                      invalid={!!errors.password}
+                      autoComplete="new-password"
+                      {...register("password")}
+                    />
+                  </Field>
+                </div>
+                <Field
+                  label="AWS access key ID"
+                  htmlFor="awsAccessKeyId"
+                  required
+                  error={errors.awsAccessKeyId?.message}
+                >
+                  <Input
+                    id="awsAccessKeyId"
+                    invalid={!!errors.awsAccessKeyId}
+                    className="font-mono text-xs"
+                    autoComplete="off"
+                    {...register("awsAccessKeyId")}
+                  />
+                </Field>
+                <Field
+                  label="AWS secret access key"
+                  htmlFor="awsSecretAccessKey"
+                  required
+                  error={errors.awsSecretAccessKey?.message}
+                >
+                  <Input
+                    id="awsSecretAccessKey"
+                    type="password"
+                    invalid={!!errors.awsSecretAccessKey}
+                    className="font-mono text-xs"
+                    autoComplete="new-password"
+                    {...register("awsSecretAccessKey")}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {step === 2 && recoveryMode === "direct" && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Field label="Host" htmlFor="host" required error={errors.host?.message}>
@@ -286,12 +445,34 @@ export function DatabaseWizardPage() {
                 <dl className="grid gap-3 sm:grid-cols-2">
                   {[
                     ["Display name", values.name],
+                    [
+                      "Mode",
+                      values.recoveryMode === "aws-rds"
+                        ? "AWS RDS snapshot restore"
+                        : "Direct Postgres",
+                    ],
                     ["Region", values.region || "—"],
-                    ["Host", values.host],
-                    ["Port", String(values.port)],
+                    ...(values.recoveryMode === "aws-rds"
+                      ? [
+                          ["RDS instance", values.rdsSourceIdentifier],
+                          [
+                            "Free tier sandbox",
+                            values.recoveryUseFreetier ? "Yes" : "No",
+                          ],
+                          [
+                            "AWS keys",
+                            values.awsAccessKeyId?.trim()
+                              ? "Will be encrypted on save"
+                              : "—",
+                          ],
+                        ]
+                      : [
+                          ["Host", values.host],
+                          ["Port", String(values.port)],
+                          ["SSL", values.sslMode],
+                        ]),
                     ["Database", values.databaseName],
                     ["Username", values.username],
-                    ["SSL", values.sslMode],
                     [
                       "Password",
                       values.password?.trim()

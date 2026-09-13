@@ -1,5 +1,8 @@
 import type { JobResource, PlanServiceResource } from "../types/api";
 import { jobDurationSeconds } from "../components/workflow/jobStatus";
+import { formatRelativeTime } from "./datetime";
+
+export { formatRelativeTime };
 
 export function workflowSlug(service: PlanServiceResource): string {
   const base = service.planName
@@ -24,17 +27,6 @@ export function formatDuration(job: JobResource): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-export function formatRelativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const min = Math.floor(diff / 60_000);
-  if (min < 1) return "Just now";
-  if (min < 60) return `${min} min ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
 }
 
 export function checksSummary(job: JobResource): string {

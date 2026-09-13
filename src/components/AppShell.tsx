@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { getPlanDefinition } from "../lib/plans";
 
 const mainNav: Array<{
   to: string;
@@ -42,8 +43,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="flex w-56 shrink-0 flex-col bg-sidebar text-slate-200">
+    <div className="min-h-screen bg-slate-100">
+      <aside
+        className="fixed inset-y-0 left-0 z-40 flex w-56 flex-col overflow-hidden bg-sidebar text-slate-200"
+      >
         <div className="flex items-center gap-2 px-4 py-5">
           <div className="flex h-7 w-7 items-center justify-center rounded bg-brand text-sm font-bold text-white">
             R
@@ -53,10 +56,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="mx-3 mb-4 rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-xs">
           <div className="font-medium text-white">{user?.organizationName ?? "Organization"}</div>
-          <div className="text-slate-400">Starter plan</div>
+          <div className="text-slate-400">
+            {getPlanDefinition(user?.organizationPlan ?? "starter").name} plan
+          </div>
         </div>
 
-        <nav className="flex-1 space-y-1 px-2">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2">
           {mainNav.map((item) =>
             item.soon ? (
               <div
@@ -139,7 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-slate-100">
+      <main className="ml-56 min-h-screen min-w-0">
         <div className="mx-auto w-full max-w-[1400px] p-6 lg:p-8">{children}</div>
       </main>
     </div>

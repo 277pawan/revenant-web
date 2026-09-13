@@ -6,7 +6,10 @@ import type {
   CreateScheduleRequest,
   CreateWebhookRequest,
   CreateWebhookResponse,
+  AuthProvidersResponse,
+  DashboardOverview,
   EvidenceArtifactResource,
+  InvitePreviewResponse,
   PlanServicesResponse,
   IssueRunnerTokenResponse,
   DatabaseResource,
@@ -73,6 +76,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  getAuthProviders(): Promise<AuthProvidersResponse> {
+    return request("/api/v1/auth/providers");
+  },
+
+  getInvitePreview(token: string): Promise<{ invite: InvitePreviewResponse }> {
+    return request(`/api/v1/auth/invite/${encodeURIComponent(token)}`);
+  },
+
   login(body: LoginRequest): Promise<LoginResponse> {
     return request("/api/v1/auth/login", { method: "POST", body: JSON.stringify(body) });
   },
@@ -83,6 +94,10 @@ export const api = {
 
   me(): Promise<{ user: AuthUser }> {
     return request("/api/v1/me");
+  },
+
+  getDashboardOverview(): Promise<{ overview: DashboardOverview }> {
+    return request("/api/v1/dashboard/overview");
   },
 
   logout(): Promise<{ ok: boolean }> {
@@ -212,8 +227,12 @@ export const api = {
     return request(`/api/v1/schedules/${id}`, { method: "DELETE" });
   },
 
-  listEvidence(page = 1, pageSize = 20): Promise<Paginated<EvidenceArtifactResource>> {
-    return request(withQuery("/api/v1/evidence", { page, pageSize }));
+  listEvidence(
+    page = 1,
+    pageSize = 20,
+    search?: string
+  ): Promise<Paginated<EvidenceArtifactResource>> {
+    return request(withQuery("/api/v1/evidence", { page, pageSize, search }));
   },
 
   async downloadJobReport(jobId: string): Promise<void> {
@@ -280,7 +299,11 @@ export const api = {
     return request(`/api/v1/webhooks/${id}`, { method: "DELETE" });
   },
 
-  listAuditEvents(page = 1, pageSize = 20): Promise<Paginated<AuditEventResource>> {
-    return request(withQuery("/api/v1/audit", { page, pageSize }));
+  listAuditEvents(
+    page = 1,
+    pageSize = 20,
+    search?: string
+  ): Promise<Paginated<AuditEventResource>> {
+    return request(withQuery("/api/v1/audit", { page, pageSize, search }));
   },
 };

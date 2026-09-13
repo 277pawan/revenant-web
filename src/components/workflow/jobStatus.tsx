@@ -6,13 +6,13 @@ import {
   Clock,
 } from "lucide-react";
 import type { JobResource, JobStatus } from "../../types/api";
+import { parseApiDate } from "../../lib/datetime";
 
 export function jobDurationSeconds(job: JobResource): number | null {
-  if (job.finishedAt && job.startedAt) {
-    return Math.round(
-      (new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) /
-        1000
-    );
+  const started = parseApiDate(job.startedAt);
+  const finished = parseApiDate(job.finishedAt);
+  if (started && finished) {
+    return Math.round((finished.getTime() - started.getTime()) / 1000);
   }
   return job.rtoSeconds;
 }
