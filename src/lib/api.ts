@@ -8,6 +8,11 @@ import type {
   CreateWebhookResponse,
   AuthProvidersResponse,
   DashboardOverview,
+  DashboardRtoTrend,
+  AcceptInviteRequest,
+  ValidationPlanTemplateResource,
+  ValidationPlanTemplateDetail,
+  TeamInviteResource,
   EvidenceArtifactResource,
   GenerateValidationYamlRequest,
   GenerateValidationYamlResponse,
@@ -113,12 +118,47 @@ export const api = {
     return request("/api/v1/auth/register", { method: "POST", body: JSON.stringify(body) });
   },
 
+  acceptInvite(body: AcceptInviteRequest): Promise<LoginResponse> {
+    return request("/api/v1/auth/accept-invite", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  forgotPassword(email: string): Promise<{ ok: true }> {
+    return request("/api/v1/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  resetPassword(token: string, password: string): Promise<{ ok: true }> {
+    return request("/api/v1/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, password }),
+    });
+  },
+
   me(): Promise<{ user: AuthUser }> {
     return request("/api/v1/me");
   },
 
   getDashboardOverview(): Promise<{ overview: DashboardOverview }> {
     return request("/api/v1/dashboard/overview");
+  },
+
+  getDashboardRtoTrends(): Promise<{ trends: DashboardRtoTrend }> {
+    return request("/api/v1/dashboard/rto-trends");
+  },
+
+  listValidationPlanTemplates(): Promise<{ templates: ValidationPlanTemplateResource[] }> {
+    return request("/api/v1/validation-plans/templates");
+  },
+
+  getValidationPlanTemplate(
+    templateId: string
+  ): Promise<{ template: ValidationPlanTemplateDetail }> {
+    return request(`/api/v1/validation-plans/templates/${templateId}`);
   },
 
   logout(): Promise<{ ok: boolean }> {
@@ -202,7 +242,7 @@ export const api = {
     return request(withQuery("/api/v1/team/members", { page, pageSize }));
   },
 
-  inviteTeamMember(body: InviteTeamMemberRequest): Promise<{ member: TeamMemberResource }> {
+  inviteTeamMember(body: InviteTeamMemberRequest): Promise<{ invite: TeamInviteResource }> {
     return request("/api/v1/team/members", {
       method: "POST",
       body: JSON.stringify(body),

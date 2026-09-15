@@ -19,7 +19,6 @@ import {
 
 const inviteSchema = z.object({
   email: z.string().email("Enter a valid email"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128),
   role: z.enum(["admin", "executor", "viewer"]),
 });
 
@@ -44,6 +43,7 @@ export function TeamPage() {
   const [saving, setSaving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<TeamMemberResource | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
 
   const {
     register,
@@ -52,7 +52,7 @@ export function TeamPage() {
     formState: { errors },
   } = useForm<InviteValues>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { email: "", password: "", role: "executor" },
+    defaultValues: { email: "", role: "executor" },
   });
 
   const load = useCallback(async (nextPage: number) => {
@@ -78,10 +78,10 @@ export function TeamPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.inviteTeamMember(values);
-      toast.success("Teammate invited", `${values.email} can sign in with the password you set.`);
-      reset({ email: "", password: "", role: "executor" });
-      setShowInvite(false);
+      const { invite } = await api.inviteTeamMember(values);
+      setInviteLink(invite.inviteUrl);
+      toast.success("Invite created", `Share the link with ${values.email}.`);
+      reset({ email: "", role: "executor" });
       await load(1);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to invite";
@@ -155,42 +155,40 @@ export function TeamPage() {
         <form
           onSubmit={handleSubmit(onInvite)}
           noValidate
-          className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3"
+          className="mb-6 space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
         >
-          <Field label="Email" htmlFor="email" required error={errors.email?.message}>
-            <Input id="email" type="email" invalid={!!errors.email} {...register("email")} />
-          </Field>
-          <Field
-            label="Temporary password"
-            htmlFor="password"
-            required
-            error={errors.password?.message}
-            hint="They sign in on the same login page"
-          >
-            <Input
-              id="password"
-              type="password"
-              invalid={!!errors.password}
-              autoComplete="new-password"
-              {...register("password")}
-            />
-          </Field>
-          <Field label="Role" htmlFor="role" required error={errors.role?.message}>
-            <Select id="role" invalid={!!errors.role} {...register("role")}>
-              <option value="executor">Executor — run jobs</option>
-              <option value="viewer">Viewer — read only</option>
-              <option value="admin">Admin — full access</option>
-            </Select>
-          </Field>
-          <div className="sm:col-span-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {saving ? "Inviting…" : "Create member"}
-            </button>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Email" htmlFor="email" required error={errors.email?.message}>
+              <Input id="email" type="email" invalid={!!errors.email} {...register("email")} />
+            </Field>
+            <Field label="Role" htmlFor="role" required error={errors.role?.message}>
+              <Select id="role" invalid={!!errors.role} {...register("role")}>
+                <option value="executor">Executor — run jobs</option>
+                <option value="viewer">Viewer — read only</option>
+                <option value="admin">Admin — full access</option>
+              </Select>
+            </Field>
           </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "Creating invite…" : "Create invite link"}
+          </button>
+          {inviteLink && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
+              <p className="font-medium text-emerald-900">Invite link (expires in 7 days)</p>
+              <code className="mt-2 block break-all text-xs text-slate-700">{inviteLink}</code>
+              <button
+                type="button"
+                className="mt-2 text-xs font-medium text-brand hover:underline"
+                onClick={() => void navigator.clipboard.writeText(inviteLink)}
+              >
+                Copy link
+              </button>
+            </div>
+          )}
         </form>
       )}
 

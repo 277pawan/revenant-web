@@ -12,6 +12,7 @@ import {
   FileCode2,
   Users,
 } from "lucide-react";
+import { RevenantMark } from "./auth/RevenantMark";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition } from "../lib/plans";
 
@@ -47,10 +48,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside
         className="fixed inset-y-0 left-0 z-40 flex w-56 flex-col overflow-hidden bg-sidebar text-slate-200"
       >
-        <div className="flex items-center gap-2 px-4 py-5">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-brand text-sm font-bold text-white">
-            R
-          </div>
+        <div className="flex items-center gap-2.5 px-4 py-5">
+          <RevenantMark size="xs" alt="" />
           <span className="font-semibold text-white">Revenant Cloud</span>
         </div>
 

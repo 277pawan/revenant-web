@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Building2, Loader2, Shield } from "lucide-react";
 import { AuthBrandPanel } from "../components/auth/AuthBrandPanel";
 import { AuthSuccessOverlay } from "../components/auth/AuthSuccessOverlay";
@@ -19,7 +19,7 @@ import type {
 type AuthMode = "login" | "register";
 
 export function LoginPage() {
-  const { user, login, register } = useAuth();
+  const { user, login, register, acceptInvite } = useAuth();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -75,6 +75,8 @@ export function LoginPage() {
       .catch(() => setInvite(null));
   }, [inviteToken]);
 
+  const joiningViaInvite = !!invite && !!inviteToken;
+
   useEffect(() => {
     if (initialMode === "register" && authConfig && !authConfig.openRegistration) {
       setMode("login");
@@ -97,7 +99,10 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      if (mode === "login") {
+      if (joiningViaInvite && inviteToken) {
+        await acceptInvite({ inviteToken, email, password });
+        setSuccessMessage(`Welcome to ${invite?.organizationName}…`);
+      } else if (mode === "login") {
         await login({ email, password });
         setSuccessMessage("Welcome back — loading your fleet posture…");
       } else {
@@ -159,12 +164,18 @@ export function LoginPage() {
 
           <div className="mb-6">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              {mode === "login" ? "Sign in to your control plane" : "Create your organization"}
+              {joiningViaInvite
+                ? "Join your organization"
+                : mode === "login"
+                  ? "Sign in to your control plane"
+                  : "Create your organization"}
             </h1>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              {mode === "login"
-                ? "Orchestrate restore drills and prove every backup is recoverable."
-                : "You'll be the admin. Invite teammates after your first restore drill."}
+              {joiningViaInvite
+                ? "Set a password to accept your invite and access the control plane."
+                : mode === "login"
+                  ? "Orchestrate restore drills and prove every backup is recoverable."
+                  : "You'll be the admin. Invite teammates after your first restore drill."}
             </p>
           </div>
 
@@ -228,13 +239,21 @@ export function LoginPage() {
 
             <PasswordField
               id="password"
-              label="Password"
+              label={joiningViaInvite ? "Choose a password" : "Password"}
               value={password}
               onChange={setPassword}
-              showStrength={mode === "register"}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              showStrength={mode === "register" || joiningViaInvite}
+              autoComplete={mode === "login" && !joiningViaInvite ? "current-password" : "new-password"}
               invalid={!!error}
             />
+
+            {mode === "login" && !joiningViaInvite && (
+              <div className="text-right">
+                <Link to="/forgot-password" className="text-xs font-medium text-brand hover:underline">
+                  Forgot password?
+                </Link>
+              </div>
+            )}
 
             {error && (
               <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -252,6 +271,8 @@ export function LoginPage() {
                   <Loader2 size={16} className="animate-spin" />
                   Please wait…
                 </>
+              ) : joiningViaInvite ? (
+                "Accept invite"
               ) : mode === "login" ? (
                 "Sign in with email"
               ) : (

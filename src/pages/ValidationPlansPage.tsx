@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useForm, Controller, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlignLeft, List, Save, Wand2 } from "lucide-react";
+import { AlignLeft, ChevronDown, FileDown, List, Save, Wand2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
@@ -27,6 +27,7 @@ import {
   type DatabaseResource,
   type PaginationMeta,
   type ValidationPlanResource,
+  type ValidationPlanTemplateResource,
   type YamlComposerStatus,
 } from "../types/api";
 
@@ -89,6 +90,7 @@ export function ValidationPlansPage() {
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [leftPanel, setLeftPanel] = useState<LeftPanel>("plans");
   const [composerStatus, setComposerStatus] = useState<YamlComposerStatus | null>(null);
+  const [templates, setTemplates] = useState<ValidationPlanTemplateResource[]>([]);
   const initialDbLoaded = useRef(false);
 
   function toggleLeftPanel(panel: LeftPanel) {
@@ -116,6 +118,19 @@ export function ValidationPlansPage() {
   const planName = watch("name");
   const selectedDatabaseId = watch("databaseId");
   const preview = useYamlPreview(yamlText ?? "");
+
+  const uniqueCheckTypes = useMemo(() => {
+    if (!preview.ok) return [];
+    const seen = new Set<string>();
+    const types: string[] = [];
+    for (const check of preview.checks) {
+      if (!seen.has(check.type)) {
+        seen.add(check.type);
+        types.push(check.type);
+      }
+    }
+    return types;
+  }, [preview]);
 
   const loadPlans = useCallback(async (nextPage: number, searchTerm: string) => {
     const res = await api.listValidationPlans(
@@ -173,6 +188,13 @@ export function ValidationPlansPage() {
     },
     [plans, reset, toast]
   );
+
+  useEffect(() => {
+    void api
+      .listValidationPlanTemplates()
+      .then((res) => setTemplates(res.templates))
+      .catch(() => setTemplates([]));
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -236,6 +258,19 @@ export function ValidationPlansPage() {
       return;
     }
     toast.error("Cannot save", "Please fix the highlighted fields.");
+  }
+
+  async function importTemplate(templateId: string) {
+    try {
+      const { template } = await api.getValidationPlanTemplate(templateId);
+      setValue("yamlText", template.yamlText, { shouldValidate: true });
+      toast.success("Template imported", template.name);
+    } catch (err) {
+      toast.error(
+        "Import failed",
+        err instanceof Error ? err.message : "Could not load template"
+      );
+    }
   }
 
   function onFormat() {
@@ -417,8 +452,26 @@ export function ValidationPlansPage() {
           noValidate
           className="flex h-full min-h-[calc(100vh-9rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:min-h-0"
         >
-          <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 px-4 py-3">
-            <div className="min-w-[140px] flex-1">
+          <div className="border-b border-slate-200 bg-slate-50/60 px-5 py-4">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-900">Plan editor</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Validation checks run against your target database on each proof workflow.
+                </p>
+              </div>
+              {canWrite && (
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Save size={15} />
+                  {saving ? "Saving…" : "Save plan"}
+                </button>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
               <Field
                 label="Database"
                 htmlFor="databaseId"
@@ -439,8 +492,6 @@ export function ValidationPlansPage() {
                   )}
                 />
               </Field>
-            </div>
-            <div className="w-36">
               <Field label="Plan name" htmlFor="name" required error={errors.name?.message}>
                 <Input
                   id="name"
@@ -450,52 +501,83 @@ export function ValidationPlansPage() {
                 />
               </Field>
             </div>
-            <div className="flex flex-1 flex-wrap items-center justify-end gap-2 pb-0.5">
-              {preview.ok && preview.checks.length > 0 && (
-                <div className="hidden flex-wrap gap-1 sm:flex">
-                  {preview.checks.map((c, i) => (
-                    <span
-                      key={`${c.type}-${i}`}
-                      className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
-                    >
-                      {c.type}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {canWrite && (
-                <>
-                  <button
-                    type="button"
-                    onClick={onFormat}
-                    className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    <AlignLeft size={14} />
-                    Format
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    <Save size={14} />
-                    {saving ? "Saving…" : "Save plan"}
-                  </button>
-                </>
-              )}
-            </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs font-medium text-slate-700">
                 revenant.yaml
-                <span className="ml-1 text-red-500">*</span>
               </span>
+              <span className="text-xs text-red-500">*</span>
               {!preview.ok && (
                 <span className="text-xs text-amber-700">Fix YAML to preview checks</span>
               )}
             </div>
+            {canWrite && (
+              <div className="flex items-center gap-2">
+                {templates.length > 0 && (
+                  <div className="relative">
+                    <FileDown
+                      size={14}
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <ChevronDown
+                      size={14}
+                      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (id) void importTemplate(id);
+                        e.target.value = "";
+                      }}
+                      aria-label="Import validation plan template"
+                      className="appearance-none rounded-md border border-slate-300 bg-white py-1.5 pl-8 pr-8 text-xs font-medium text-slate-700 hover:bg-slate-50 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                    >
+                      <option value="" disabled>Import template…</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={onFormat}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <AlignLeft size={14} />
+                  Format
+                </button>
+              </div>
+            )}
+          </div>
+
+          {preview.ok && uniqueCheckTypes.length > 0 && (
+            <div className="border-b border-slate-100 px-5 py-2.5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Checks in this plan
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {uniqueCheckTypes.map((type) => (
+                  <span
+                    key={type}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-600"
+                  >
+                    {type}
+                  </span>
+                ))}
+                {preview.checks.length > uniqueCheckTypes.length && (
+                  <span className="text-xs text-slate-400">
+                    {preview.checks.length} checks total
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex min-h-0 flex-1 flex-col px-5 py-3">
             <div className="min-h-0 flex-1">
               <Controller
                 name="yamlText"

@@ -1,5 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { AuthUser, LoginRequest, RegisterRequest } from "../types/api";
+import type {
+  AcceptInviteRequest,
+  AuthUser,
+  LoginRequest,
+  RegisterRequest,
+} from "../types/api";
 import { api } from "./api";
 
 const TOKEN_KEY = "revenant_token"; // fallback if cookie blocked; API also sets httpOnly cookie
@@ -9,6 +14,7 @@ interface AuthState {
   loading: boolean;
   login: (body: LoginRequest) => Promise<void>;
   register: (body: RegisterRequest) => Promise<void>;
+  acceptInvite: (body: AcceptInviteRequest) => Promise<void>;
   logout: () => void;
 }
 
@@ -50,6 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const acceptInvite = useCallback(async (body: AcceptInviteRequest) => {
+    const res = await api.acceptInvite(body);
+    localStorage.setItem(TOKEN_KEY, res.token);
+    setUser(res.user);
+  }, []);
+
   const logout = useCallback(async () => {
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
@@ -57,8 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, logout }),
-    [user, loading, login, register, logout]
+    () => ({ user, loading, login, register, acceptInvite, logout }),
+    [user, loading, login, register, acceptInvite, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -12,12 +12,18 @@ import {
   Zap,
 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { RtoTrendChart } from "../components/RtoTrendChart";
 import { DateTimeText } from "../components/DateTimeText";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { getPlanDefinition } from "../lib/plans";
 import { formatRelativeTime } from "../lib/datetime";
-import type { DashboardFleetRow, DashboardOverview, FleetHealthStatus } from "../types/api";
+import type {
+  DashboardFleetRow,
+  DashboardOverview,
+  DashboardRtoTrendPoint,
+  FleetHealthStatus,
+} from "../types/api";
 import { roleHasPermission } from "../types/api";
 
 function formatRto(seconds: number | null): string {
@@ -130,19 +136,27 @@ export function DashboardPage() {
   const { user } = useAuth();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [rtoDays, setRtoDays] = useState<DashboardRtoTrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trendsLoading, setTrendsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setTrendsLoading(true);
     setError(null);
     try {
-      const { overview: data } = await api.getDashboardOverview();
+      const [{ overview: data }, { trends }] = await Promise.all([
+        api.getDashboardOverview(),
+        api.getDashboardRtoTrends(),
+      ]);
       setOverview(data);
+      setRtoDays(trends.days);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
       setLoading(false);
+      setTrendsLoading(false);
     }
   }, []);
 
@@ -266,6 +280,10 @@ export function DashboardPage() {
             <div className="mt-1 text-xs text-slate-500">{card.hint}</div>
           </div>
         ))}
+      </div>
+
+      <div className="mb-8">
+        <RtoTrendChart days={rtoDays} loading={trendsLoading} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">

@@ -137,6 +137,34 @@ export interface DashboardOnboardingStep {
   href: string;
 }
 
+export interface DashboardRtoTrendPoint {
+  date: string;
+  avgRtoSeconds: number | null;
+  passCount: number;
+}
+
+export interface DashboardRtoTrend {
+  days: DashboardRtoTrendPoint[];
+}
+
+export interface ValidationPlanTemplateResource {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+}
+
+export interface ValidationPlanTemplateDetail extends ValidationPlanTemplateResource {
+  yamlText: string;
+}
+
+export interface TeamInviteResource {
+  inviteUrl: string;
+  email: string;
+  role: UserRole;
+  expiresAt: string;
+}
+
 export interface DashboardOverview {
   organizationPlan: OrganizationPlan;
   summary: {
@@ -284,8 +312,13 @@ export interface TeamMemberResource {
 
 export interface InviteTeamMemberRequest {
   email: string;
-  password: string;
   role: UserRole;
+}
+
+export interface AcceptInviteRequest {
+  inviteToken: string;
+  email: string;
+  password: string;
 }
 
 export interface UpdateTeamMemberRequest {
