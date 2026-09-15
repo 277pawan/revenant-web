@@ -48,7 +48,6 @@ export function LoginPage() {
         providers: [
           { id: "google", label: "Google", status: "coming_soon" },
           { id: "github", label: "GitHub", status: "coming_soon" },
-          { id: "microsoft", label: "Microsoft", status: "coming_soon" },
         ],
         passwordLoginEnabled: true,
         openRegistration: true,
@@ -82,6 +81,15 @@ export function LoginPage() {
       setMode("login");
     }
   }, [initialMode, authConfig]);
+
+  useEffect(() => {
+    const oauthError = searchParams.get("oauth_error");
+    if (!oauthError) return;
+    setError(oauthError);
+    const next = new URLSearchParams(searchParams);
+    next.delete("oauth_error");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   function switchMode(next: AuthMode) {
     setMode(next);
@@ -181,6 +189,7 @@ export function LoginPage() {
 
           <OAuthButtons
             providers={providers}
+            inviteToken={inviteToken}
             onUnavailable={(label) =>
               toast.info(`${label} sign-in`, "Coming soon — use email and password for now.")
             }

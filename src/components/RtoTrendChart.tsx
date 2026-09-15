@@ -5,6 +5,7 @@ import type { DashboardRtoTrendPoint } from "../types/api";
 
 const CHART_HEIGHT_PX = 168;
 const Y_AXIS_W = 40;
+const TOOLTIP_SLOT_PX = 88;
 
 function formatRto(seconds: number | null): string {
   if (seconds == null) return "—";
@@ -87,9 +88,9 @@ export function RtoTrendChart({ days, loading }: RtoTrendChartProps) {
   const yTicks = useMemo(() => {
     if (!stats.hasData) return [0];
     const max = stats.max;
-    if (max <= 10) return [0, Math.ceil(max / 2), max];
-    const mid = Math.round(max / 2);
-    return [0, mid, max];
+    const raw =
+      max <= 10 ? [0, Math.ceil(max / 2), max] : [0, Math.round(max / 2), max];
+    return [...new Set(raw)].sort((a, b) => a - b);
   }, [stats]);
 
   const xLabelIndices = useMemo(() => {
@@ -230,42 +231,48 @@ export function RtoTrendChart({ days, loading }: RtoTrendChartProps) {
           </Link>
         </div>
       ) : (
-        <div className="relative">
-          {hovered && (
-            <div
-              className="pointer-events-none absolute z-20 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg"
-              style={{
-                left: `calc(${Y_AXIS_W}px + (100% - ${Y_AXIS_W}px) * ${hoveredPct / 100})`,
-                top: 0,
-              }}
-            >
-              <p className="whitespace-nowrap text-xs font-semibold text-slate-900">
-                {formatLongDate(hovered.date)}
-              </p>
-              {hovered.avgRtoSeconds != null ? (
-                <>
-                  <p className="mt-1 font-mono text-lg font-bold text-brand">
-                    {formatRto(hovered.avgRtoSeconds)}
-                    <span className="ml-1 text-xs font-normal text-slate-500">avg RTO</span>
-                  </p>
-                  <p className="text-[11px] text-slate-600">
-                    {hovered.passCount} successful drill{hovered.passCount === 1 ? "" : "s"}
-                  </p>
-                  {stats.avg != null && hovered.avgRtoSeconds != null && (
-                    <p className="mt-1 text-[10px] text-slate-500">
-                      {hovered.avgRtoSeconds <= stats.avg
-                        ? `${formatRto(stats.avg - hovered.avgRtoSeconds)} faster than 30d avg`
-                        : `${formatRto(hovered.avgRtoSeconds - stats.avg)} slower than 30d avg`}
+        <div className="relative" style={{ paddingTop: TOOLTIP_SLOT_PX }}>
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-20"
+            style={{ height: TOOLTIP_SLOT_PX }}
+            aria-hidden={!hovered}
+          >
+            {hovered && (
+              <div
+                className="absolute -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg transition-opacity duration-150"
+                style={{
+                  left: `calc(${Y_AXIS_W}px + (100% - ${Y_AXIS_W}px) * ${hoveredPct / 100})`,
+                  top: 0,
+                }}
+              >
+                <p className="whitespace-nowrap text-xs font-semibold text-slate-900">
+                  {formatLongDate(hovered.date)}
+                </p>
+                {hovered.avgRtoSeconds != null ? (
+                  <>
+                    <p className="mt-1 font-mono text-lg font-bold text-brand">
+                      {formatRto(hovered.avgRtoSeconds)}
+                      <span className="ml-1 text-xs font-normal text-slate-500">avg RTO</span>
                     </p>
-                  )}
-                </>
-              ) : (
-                <p className="mt-1 text-xs text-slate-500">No drills this day</p>
-              )}
-            </div>
-          )}
+                    <p className="text-[11px] text-slate-600">
+                      {hovered.passCount} successful drill{hovered.passCount === 1 ? "" : "s"}
+                    </p>
+                    {stats.avg != null && hovered.avgRtoSeconds != null && (
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        {hovered.avgRtoSeconds <= stats.avg
+                          ? `${formatRto(stats.avg - hovered.avgRtoSeconds)} faster than 30d avg`
+                          : `${formatRto(hovered.avgRtoSeconds - stats.avg)} slower than 30d avg`}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">No drills this day</p>
+                )}
+              </div>
+            )}
+          </div>
 
-          <div className="flex gap-2" style={{ paddingTop: hovered ? 88 : 0 }}>
+          <div className="flex gap-2">
             <div
               className="flex shrink-0 flex-col justify-between text-right text-[10px] tabular-nums text-slate-400"
               style={{ width: Y_AXIS_W, height: CHART_HEIGHT_PX }}
@@ -324,9 +331,9 @@ export function RtoTrendChart({ days, loading }: RtoTrendChartProps) {
                       )}
                       {barPx > 0 ? (
                         <div
-                          className={`relative z-10 w-full rounded-t transition-all ${
+                          className={`relative z-10 w-full rounded-t transition-[background-color,box-shadow] duration-150 ${
                             active
-                              ? "bg-brand ring-2 ring-brand/30"
+                              ? "bg-brand shadow-[0_0_0_2px_rgba(37,99,235,0.25)]"
                               : "bg-brand/75 group-hover:bg-brand"
                           }`}
                           style={{ height: barPx }}

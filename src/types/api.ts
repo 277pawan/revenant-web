@@ -76,7 +76,7 @@ export interface Paginated<T> {
 
 export type OrganizationPlan = "starter" | "pro" | "enterprise";
 
-export type OAuthProviderId = "google" | "github" | "microsoft";
+export type OAuthProviderId = "google" | "github";
 export type AuthProviderStatus = "live" | "coming_soon" | "disabled";
 
 export interface AuthProviderInfo {

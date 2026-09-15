@@ -41,6 +41,23 @@ function lineCount(text: string): number {
   return text.split("\n").length;
 }
 
+function composerErrorMessage(err: unknown): string {
+  const fallback =
+    "Revenant AI is temporarily unavailable. Please try again in a few minutes.";
+  if (!(err instanceof Error)) return fallback;
+
+  const msg = err.message.trim();
+  if (!msg) return fallback;
+
+  const looksInternal =
+    /model request failed|mistral|openrouter|api\.mistral|sk-or-|MISTRAL_|user_id|valid model/i.test(
+      msg
+    );
+  if (looksInternal) return fallback;
+
+  return msg;
+}
+
 export function ProofComposer({
   planName,
   disabled,
@@ -140,7 +157,7 @@ export function ProofComposer({
       onApply(res.yamlText);
       setShowForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not compose YAML");
+      setError(composerErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -334,7 +351,7 @@ export function ProofComposer({
 
           {!status?.enabled && status != null && (
             <p className="mt-2 text-[10px] text-amber-700">
-              Set MISTRAL_API_KEY on the API to enable.
+              Proof Composer is temporarily unavailable. You can still edit YAML manually.
             </p>
           )}
         </div>

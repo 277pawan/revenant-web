@@ -46,17 +46,24 @@ function ProviderIcon({ id }: { id: AuthProviderInfo["id"] }) {
 
 type OAuthButtonsProps = {
   providers: AuthProviderInfo[];
+  inviteToken?: string | null;
   onUnavailable: (label: string) => void;
 };
 
-export function OAuthButtons({ providers, onUnavailable }: OAuthButtonsProps) {
+export function OAuthButtons({
+  providers,
+  inviteToken,
+  onUnavailable,
+}: OAuthButtonsProps) {
   function handleClick(provider: AuthProviderInfo) {
     if (provider.status !== "live" || !provider.authorizePath) {
       onUnavailable(provider.label);
       return;
     }
-    const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `${API_URL}${provider.authorizePath}?returnTo=${returnTo}`;
+    const params = new URLSearchParams();
+    params.set("returnTo", window.location.pathname + window.location.search);
+    if (inviteToken) params.set("invite", inviteToken);
+    window.location.href = `${API_URL}${provider.authorizePath}?${params.toString()}`;
   }
 
   return (
@@ -68,7 +75,7 @@ export function OAuthButtons({ providers, onUnavailable }: OAuthButtonsProps) {
         </span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         {providers.map((provider) => (
           <button
             key={provider.id}
