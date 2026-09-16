@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { Copy, KeyRound, RefreshCw, Server } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { getPlanDefinition, planAllowsSelfHostedAgent } from "../lib/plans";
 import { roleHasPermission, type PlanServiceResource } from "../types/api";
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -45,13 +46,11 @@ function agentStatus(lastSeenAt: string | null): {
 
 function AgentServiceCard({
   service,
-  canIssue,
   issuing,
   onIssue,
   issuedToken,
 }: {
   service: PlanServiceResource;
-  canIssue: boolean;
   issuing: boolean;
   onIssue: () => void;
   issuedToken: string | null;
@@ -64,21 +63,9 @@ function AgentServiceCard({
   const agentImage =
     import.meta.env.VITE_AGENT_IMAGE?.trim() || "277pawan/revenant-agent:latest";
 
-  /** Laptop only: container cannot use 127.0.0.1 to reach the host API. */
-  const dockerLocalCmd = `docker run -d --restart unless-stopped \\
-  --add-host=host.docker.internal:host-gateway \\
-  -e REVENANT_API_URL=http://host.docker.internal:8080 \\
-  -e REVENANT_RUNNER_TOKEN=${token} \\
-  revenant-agent:local`;
-
-  /** Customers: token only. API URL is baked into the published image. */
   const dockerCustomerCmd = `docker run -d --restart unless-stopped \\
   -e REVENANT_RUNNER_TOKEN=${token} \\
   ${agentImage}`;
-
-  const localCmd = issuedToken
-    ? `REVENANT_RUNNER_TOKEN=${issuedToken} npm start`
-    : "REVENANT_RUNNER_TOKEN=<your-token> npm start";
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -90,6 +77,11 @@ function AgentServiceCard({
           <div>
             <h2 className="font-semibold text-slate-900">{service.planName}</h2>
             <p className="text-sm text-slate-500">{service.databaseName}</p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {service.recoveryMode === "direct"
+                ? "Private Postgres — agent required"
+                : "AWS RDS — managed by Revenant (token optional)"}
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${status.className}`}
@@ -101,12 +93,12 @@ function AgentServiceCard({
                   Token {service.runner.tokenPrefix}…
                 </span>
               ) : (
-                <span className="text-xs text-amber-700">No agent token</span>
+                <span className="text-xs text-amber-700">No agent token yet</span>
               )}
             </div>
           </div>
         </div>
-        {canIssue && (
+        {service.recoveryMode === "direct" && (
           <button
             type="button"
             disabled={issuing}
@@ -115,7 +107,7 @@ function AgentServiceCard({
           >
             <KeyRound size={14} />
             {issuing
-              ? "Rotating…"
+              ? "Issuing…"
               : service.runner
                 ? "Rotate token"
                 : "Issue token"}
@@ -124,89 +116,51 @@ function AgentServiceCard({
       </div>
 
       <div className="space-y-4 px-4 py-4 text-sm">
-        {service.runner && (
-          <p className="text-xs text-slate-500">
-            One active token per plan. Rotating replaces the current token — the
-            previous one stops working immediately.
+        {service.recoveryMode !== "direct" && (
+          <p className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            This workflow uses managed AWS drills. Run from{" "}
+            <Link to="/workflows" className="font-medium text-brand hover:underline">
+              Workflows
+            </Link>{" "}
+            — no Docker needed.
           </p>
         )}
 
-        {issuedToken && (
+        {issuedToken && service.recoveryMode === "direct" && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
-            <span className="font-semibold">New token (copy now)</span>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <code className="break-all rounded bg-white px-2 py-1 font-mono">
-                {issuedToken}
-              </code>
-              <CopyButton text={issuedToken} label="Token" />
+            <p className="font-medium">Copy this token now — it won&apos;t be shown again.</p>
+            <p className="mt-2 break-all font-mono">{issuedToken}</p>
+            <div className="mt-2">
+              <CopyButton text={issuedToken} label="Copy token" />
             </div>
           </div>
         )}
 
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Local agent
-          </p>
-          <pre className="mt-1 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-[11px]">
-            cd revenant-agent{"\n"}
-            {localCmd}
-          </pre>
-          {issuedToken && (
-            <CopyButton
-              text={`cd revenant-agent\n${localCmd}`}
-              label="Local cmd"
-            />
-          )}
-        </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Docker — this laptop (API on localhost)
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            <code className="font-mono">revenant-agent:local</code> is a local image name, not
-            Docker Hub. <code className="font-mono">--add-host</code> is only so the container can
-            reach your machine&apos;s API — customers never need it.
-          </p>
-          <pre className="mt-1 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-[11px]">
-            {hasToken || service.runner ? dockerLocalCmd : "Issue a token first"}
-          </pre>
-          {(hasToken || service.runner) && (
-            <CopyButton text={dockerLocalCmd} label="Local Docker" />
-          )}
-        </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Docker — customers (token only)
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            They never set an API URL. It is baked into the image when we publish. To point at a
-            new API later, we push a new image — they pull and keep the same token.
-          </p>
-          <pre className="mt-1 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-[11px]">
-            {hasToken || service.runner ? dockerCustomerCmd : "Issue a token first"}
-          </pre>
-          {(hasToken || service.runner) && (
-            <CopyButton text={dockerCustomerCmd} label="Customer Docker" />
-          )}
-        </div>
+        {service.recoveryMode === "direct" && (service.runner || issuedToken) && (
+          <div>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Docker (inside your VPC)
+            </p>
+            <pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">
+              {dockerCustomerCmd}
+            </pre>
+            <div className="mt-2">
+              <CopyButton text={dockerCustomerCmd} label="Copy docker run" />
+            </div>
+          </div>
+        )}
 
         {lastRun && (
-          <p className="border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <p className="text-xs text-slate-500">
             Last run:{" "}
             <Link
-              to={`/workflows/${service.databaseId}/runs/${lastRun.id}`}
+              to={`/workflows/${lastRun.id}`}
               className="font-medium uppercase text-brand hover:underline"
             >
               {lastRun.status}
             </Link>
             {" · "}
             {new Date(lastRun.createdAt).toLocaleString()}
-            {" · "}
-            <Link to="/workflows" className="text-brand hover:underline">
-              All workflows
-            </Link>
           </p>
         )}
       </div>
@@ -215,24 +169,24 @@ function AgentServiceCard({
 }
 
 export function RunnersPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const toast = useToast();
   const canView = user ? roleHasPermission(user.role, "plans:read") : false;
-  const canIssue = user ? roleHasPermission(user.role, "plans:write") : false;
+  const plan = getPlanDefinition(user?.organizationPlan ?? "starter");
+  const agentAllowed = user ? planAllowsSelfHostedAgent(user.organizationPlan) : false;
 
   const [services, setServices] = useState<PlanServiceResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [issuingId, setIssuingId] = useState<string | null>(null);
-  const [issuedForDatabase, setIssuedForDatabase] = useState<string | null>(
-    null
-  );
+  const [issuedForDatabase, setIssuedForDatabase] = useState<string | null>(null);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      await refreshUser();
       const res = await api.listPlanServices();
       setServices(res.services);
     } catch (err) {
@@ -240,7 +194,7 @@ export function RunnersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshUser]);
 
   useEffect(() => {
     void load();
@@ -252,14 +206,11 @@ export function RunnersPage() {
       const res = await api.issueRunnerToken(databaseId);
       setIssuedToken(res.token);
       setIssuedForDatabase(databaseId);
-      toast.success(
-        "Token rotated",
-        "Previous token is invalid. Copy the new one now."
-      );
+      toast.success("Token issued", "Copy it now — previous token no longer works.");
       await load();
     } catch (err) {
       toast.error(
-        "Could not rotate token",
+        "Could not issue token",
         err instanceof Error ? err.message : "Request failed"
       );
     } finally {
@@ -270,22 +221,30 @@ export function RunnersPage() {
   if (!canView) {
     return (
       <AppShell>
-        <h1 className="text-2xl font-semibold">Agent setup</h1>
+        <h1 className="text-2xl font-semibold">Private-network agent</h1>
         <p className="mt-2 text-sm text-slate-600">You do not have access.</p>
       </AppShell>
     );
   }
+
+  if (user && !agentAllowed) {
+    return <Navigate to="/workflows" replace />;
+  }
+
+  const directWorkflows = services.filter((s) => s.recoveryMode === "direct");
 
   return (
     <AppShell>
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Agent services
+            Private-network agent
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Connect one self-hosted agent per validation plan. Issue or rotate
-            tokens here — run history lives under Workflows.
+            <strong className="font-medium text-slate-800">{plan.name} plan.</strong> AWS restore
+            drills still run on Revenant&apos;s cloud automatically. Issue a token here only for
+            workflows using <strong className="font-medium">direct Postgres</strong> inside a private
+            VPC ({plan.parallelRestoreDrills ?? "unlimited"} parallel drills org-wide).
           </p>
         </div>
         <button
@@ -310,26 +269,26 @@ export function RunnersPage() {
             <div key={i} className="h-40 animate-pulse rounded-lg bg-slate-100" />
           ))}
         </div>
-      ) : services.length === 0 ? (
-        <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500">
-          No validation plans yet.{" "}
-          <Link to="/settings/validation-plans" className="text-brand hover:underline">
-            Create a plan
-          </Link>{" "}
-          first — then connect an agent here.
+      ) : directWorkflows.length === 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-600">
+          <p className="font-medium text-slate-900">No private Postgres workflows yet</p>
+          <p className="mt-2">
+            Add a database with <strong>Direct Postgres</strong> mode, or run AWS drills from{" "}
+            <Link to="/workflows" className="text-brand hover:underline">
+              Workflows
+            </Link>{" "}
+            with no agent setup.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {services.map((svc) => (
+          {directWorkflows.map((svc) => (
             <AgentServiceCard
               key={svc.databaseId}
               service={svc}
-              canIssue={canIssue}
               issuing={issuingId === svc.databaseId}
               onIssue={() => void issueToken(svc.databaseId)}
-              issuedToken={
-                issuedForDatabase === svc.databaseId ? issuedToken : null
-              }
+              issuedToken={issuedForDatabase === svc.databaseId ? issuedToken : null}
             />
           ))}
         </div>

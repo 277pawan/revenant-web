@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { RevenantMark } from "./auth/RevenantMark";
 import { useAuth } from "../lib/auth";
-import { getPlanDefinition } from "../lib/plans";
+import { getPlanDefinition, planAllowsSelfHostedAgent } from "../lib/plans";
 
 const mainNav: Array<{
   to: string;
@@ -32,7 +32,7 @@ const mainNav: Array<{
 const settingsNav = [
   { to: "/settings/validation-plans", label: "Validation Plans", icon: FileCode2 },
   { to: "/settings/team", label: "Team & Roles", icon: Users },
-  { to: "/settings/runners", label: "Services", icon: Server },
+  { to: "/settings/runners", label: "Agent (Pro+)", icon: Server },
   { label: "General", soon: true },
   { label: "Credentials", soon: true },
   { label: "API Tokens", soon: true },
@@ -92,8 +92,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-4 px-3 text-[10px] uppercase tracking-wide text-slate-500">
             Settings
           </div>
-          {settingsNav.map((item) =>
-            "to" in item && item.to ? (
+          {settingsNav.map((item) => {
+            if (
+              item.to === "/settings/runners" &&
+              user &&
+              !planAllowsSelfHostedAgent(user.organizationPlan)
+            ) {
+              return null;
+            }
+            return "to" in item && item.to ? (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -115,8 +122,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="flex-1">{item.label}</span>
                 <span className="text-[10px] uppercase tracking-wide text-slate-600">Soon</span>
               </div>
-            )
-          )}
+            );
+          })}
         </nav>
 
         <div className="border-t border-slate-700 px-2 py-3 text-sm text-slate-400">

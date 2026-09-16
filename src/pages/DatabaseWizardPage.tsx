@@ -20,6 +20,7 @@ export function DatabaseWizardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const canWrite = user ? roleHasPermission(user.role, "databases:write") : false;
+  const allowDirectPostgres = user?.organizationPlan !== "starter";
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -170,12 +171,14 @@ export function DatabaseWizardPage() {
                 <Field
                   label="Validation mode"
                   htmlFor="recoveryMode"
-                  hint="AWS mode restores latest RDS snapshot to a temporary sandbox"
+                  hint="Starter: managed AWS snapshot → sandbox drill (no agent). Pro adds direct Postgres."
                   error={errors.recoveryMode?.message}
                 >
                   <Select id="recoveryMode" invalid={!!errors.recoveryMode} {...register("recoveryMode")}>
-                    <option value="direct">Direct — connect to live Postgres</option>
-                    <option value="aws-rds">AWS RDS — snapshot restore drill</option>
+                    {allowDirectPostgres && (
+                      <option value="direct">Direct — connect to live Postgres (Pro+)</option>
+                    )}
+                    <option value="aws-rds">AWS RDS — snapshot restore drill (recommended)</option>
                   </Select>
                 </Field>
                 <Field

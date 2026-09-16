@@ -16,6 +16,8 @@ interface AuthState {
   register: (body: RegisterRequest) => Promise<void>;
   acceptInvite: (body: AcceptInviteRequest) => Promise<void>;
   logout: () => void;
+  /** Re-fetch /me — picks up plan changes from DB (e.g. manual Pro grant) */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -36,6 +38,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshSession().finally(() => setLoading(false));
+  }, [refreshSession]);
+
+  useEffect(() => {
+    const sync = () => {
+      void refreshSession();
+    };
+    window.addEventListener("focus", sync);
+    return () => window.removeEventListener("focus", sync);
   }, [refreshSession]);
 
   const login = useCallback(
@@ -69,8 +79,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, loading, login, register, acceptInvite, logout }),
-    [user, loading, login, register, acceptInvite, logout]
+    () => ({
+      user,
+      loading,
+      login,
+      register,
+      acceptInvite,
+      logout,
+      refreshUser: refreshSession,
+    }),
+    [user, loading, login, register, acceptInvite, logout, refreshSession]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

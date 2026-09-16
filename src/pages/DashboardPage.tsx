@@ -12,6 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { SubscriptionBanner } from "../components/SubscriptionBanner";
 import { RtoTrendChart } from "../components/RtoTrendChart";
 import { DateTimeText } from "../components/DateTimeText";
 import { useAuth } from "../lib/auth";
@@ -178,8 +179,19 @@ export function DashboardPage() {
         ? `${overview.summary.healthyCount} workflow${overview.summary.healthyCount > 1 ? "s" : ""} passed the last restore drill`
         : "Prove your backups actually recover — not just exist";
 
+  const trialDays =
+    user?.trialEndsAt != null
+      ? Math.max(
+          0,
+          Math.ceil(
+            (new Date(user.trialEndsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+          )
+        )
+      : null;
+
   return (
     <AppShell>
+      {user && <SubscriptionBanner user={user} />}
       {/* Hero */}
       <section className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 px-6 py-8 text-white shadow-lg sm:px-8">
         <div className="flex flex-wrap items-start justify-between gap-6">
@@ -220,9 +232,19 @@ export function DashboardPage() {
             <div className="mt-1 text-xl font-bold">{plan.name}</div>
             <div className="text-sm text-slate-300">{plan.priceLabel}</div>
             <p className="mt-2 max-w-[220px] text-xs text-slate-400">{plan.tagline}</p>
-            <div className="mt-3 text-[10px] uppercase tracking-wide text-slate-500">
-              Billing + SSO via website later
-            </div>
+            {user?.subscriptionStatus === "trialing" && trialDays != null ? (
+              <div className="mt-3 rounded-md bg-white/10 px-2 py-1 text-xs text-blue-100">
+                Trial · {trialDays} day{trialDays === 1 ? "" : "s"} left
+              </div>
+            ) : user?.subscriptionActive === false ? (
+              <div className="mt-3 rounded-md bg-red-500/20 px-2 py-1 text-xs text-red-100">
+                Subscribe to continue
+              </div>
+            ) : (
+              <div className="mt-3 text-[10px] uppercase tracking-wide text-slate-500">
+                Razorpay billing on marketing site
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -134,7 +134,7 @@ export const wizardDefaults: DatabaseWizardValues = {
   name: "",
   description: "",
   engine: "postgres",
-  recoveryMode: "direct",
+  recoveryMode: "aws-rds",
   host: "",
   port: 5432,
   databaseName: "",

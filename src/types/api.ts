@@ -99,6 +99,8 @@ export interface InvitePreviewResponse {
   expiresAt: string;
 }
 
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -106,6 +108,9 @@ export interface AuthUser {
   organizationId: string;
   organizationName: string;
   organizationPlan: OrganizationPlan;
+  subscriptionStatus?: SubscriptionStatus;
+  trialEndsAt?: string | null;
+  subscriptionActive?: boolean;
 }
 
 export type FleetHealthStatus = "healthy" | "warning" | "critical" | "unknown";
