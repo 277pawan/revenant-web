@@ -19,6 +19,7 @@ import { SchedulesPage } from "./pages/SchedulesPage";
 import { EvidenceVaultPage } from "./pages/EvidenceVaultPage";
 import { WebhooksPage } from "./pages/WebhooksPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { OAuthCompletePage } from "./pages/OAuthCompletePage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -58,6 +59,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/oauth/complete" element={<OAuthCompletePage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route

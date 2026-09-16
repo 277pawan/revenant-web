@@ -1,6 +1,7 @@
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import type { AuthProviderInfo } from "../../types/api";
-
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+import { openOAuthPopup, waitForOAuthPopupMessage } from "../../lib/oauth-popup";
 
 function ProviderIcon({ id }: { id: AuthProviderInfo["id"] }) {
   if (id === "google") {
@@ -34,36 +35,51 @@ function ProviderIcon({ id }: { id: AuthProviderInfo["id"] }) {
       </svg>
     );
   }
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden>
-      <path fill="#f25022" d="M1 1h10v10H1z" />
-      <path fill="#00a4ef" d="M13 1h10v10H13z" />
-      <path fill="#7fba00" d="M1 13h10v10H1z" />
-      <path fill="#ffb900" d="M13 13h10v10H13z" />
-    </svg>
-  );
+  return null;
 }
 
 type OAuthButtonsProps = {
   providers: AuthProviderInfo[];
   inviteToken?: string | null;
   onUnavailable: (label: string) => void;
+  onSuccess: () => void;
+  onError: (message: string) => void;
 };
 
 export function OAuthButtons({
   providers,
   inviteToken,
   onUnavailable,
+  onSuccess,
+  onError,
 }: OAuthButtonsProps) {
-  function handleClick(provider: AuthProviderInfo) {
+  const [busyProvider, setBusyProvider] = useState<string | null>(null);
+
+  async function handleClick(provider: AuthProviderInfo) {
     if (provider.status !== "live" || !provider.authorizePath) {
       onUnavailable(provider.label);
       return;
     }
-    const params = new URLSearchParams();
-    params.set("returnTo", window.location.pathname + window.location.search);
-    if (inviteToken) params.set("invite", inviteToken);
-    window.location.href = `${API_URL}${provider.authorizePath}?${params.toString()}`;
+
+    setBusyProvider(provider.id);
+    try {
+      const popup = openOAuthPopup(provider.authorizePath, inviteToken);
+      if (!popup) {
+        onError("Pop-up blocked. Allow pop-ups for this site and try again.");
+        return;
+      }
+
+      const result = await waitForOAuthPopupMessage();
+      if (!result.ok) {
+        onError(result.error);
+        return;
+      }
+
+      localStorage.setItem("revenant_token", result.token);
+      onSuccess();
+    } finally {
+      setBusyProvider(null);
+    }
   }
 
   return (
@@ -76,26 +92,30 @@ export function OAuthButtons({
         <div className="h-px flex-1 bg-slate-200" />
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {providers.map((provider) => (
-          <button
-            key={provider.id}
-            type="button"
-            onClick={() => handleClick(provider)}
-            className={`group relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-              provider.status === "live"
-                ? "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm active:scale-[0.98]"
-                : "border-slate-100 bg-slate-50/80 text-slate-400 hover:border-slate-200"
-            }`}
-          >
-            <ProviderIcon id={provider.id} />
-            <span className="hidden sm:inline">{provider.label}</span>
-            {provider.status !== "live" && (
-              <span className="absolute -right-1 -top-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-                Soon
-              </span>
-            )}
-          </button>
-        ))}
+        {providers.map((provider) => {
+          const busy = busyProvider === provider.id;
+          return (
+            <button
+              key={provider.id}
+              type="button"
+              disabled={busyProvider != null}
+              onClick={() => void handleClick(provider)}
+              className={`group relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                provider.status === "live"
+                  ? "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
+                  : "border-slate-100 bg-slate-50/80 text-slate-400 hover:border-slate-200"
+              }`}
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ProviderIcon id={provider.id} />}
+              <span>{provider.label}</span>
+              {provider.status !== "live" && (
+                <span className="absolute -right-1 -top-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                  Soon
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

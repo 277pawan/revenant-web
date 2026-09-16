@@ -18,12 +18,19 @@ import type {
 
 type AuthMode = "login" | "register";
 
+const OAUTH_PROVIDER_IDS = new Set<AuthProviderInfo["id"]>(["google", "github"]);
+
+function filterOAuthProviders(providers: AuthProviderInfo[]): AuthProviderInfo[] {
+  return providers.filter((p) => OAUTH_PROVIDER_IDS.has(p.id));
+}
+
 export function LoginPage() {
-  const { user, login, register, acceptInvite } = useAuth();
+  const { user, login, register, acceptInvite, refreshUser } = useAuth();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const initialMode = searchParams.get("mode") === "register" ? "register" : "login";
+  const initialMode =
+    searchParams.get("mode") === "register" ? "register" : "login";
   const inviteToken = searchParams.get("invite");
 
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -36,18 +43,33 @@ export function LoginPage() {
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const [authConfig, setAuthConfig] = useState<AuthProvidersResponse | null>(null);
+  const [authConfig, setAuthConfig] = useState<AuthProvidersResponse | null>(
+    null,
+  );
   const [invite, setInvite] = useState<InvitePreviewResponse | null>(null);
 
   const loadAuthMeta = useCallback(async () => {
     try {
       const config = await api.getAuthProviders();
-      setAuthConfig(config);
+      setAuthConfig({
+        ...config,
+        providers: filterOAuthProviders(config.providers),
+      });
     } catch {
       setAuthConfig({
         providers: [
-          { id: "google", label: "Google", status: "coming_soon" },
-          { id: "github", label: "GitHub", status: "coming_soon" },
+          {
+            id: "google",
+            label: "Google",
+            status: "live",
+            authorizePath: "/api/v1/auth/oauth/google/start",
+          },
+          {
+            id: "github",
+            label: "GitHub",
+            status: "live",
+            authorizePath: "/api/v1/auth/oauth/github/start",
+          },
         ],
         passwordLoginEnabled: true,
         openRegistration: true,
@@ -77,7 +99,11 @@ export function LoginPage() {
   const joiningViaInvite = !!invite && !!inviteToken;
 
   useEffect(() => {
-    if (initialMode === "register" && authConfig && !authConfig.openRegistration) {
+    if (
+      initialMode === "register" &&
+      authConfig &&
+      !authConfig.openRegistration
+    ) {
       setMode("login");
     }
   }, [initialMode, authConfig]);
@@ -115,14 +141,16 @@ export function LoginPage() {
         setSuccessMessage("Welcome back — loading your fleet posture…");
       } else {
         await register({ organizationName: orgName, email, password });
-        setSuccessMessage("Organization created — let's prove your first restore…");
+        setSuccessMessage(
+          "Organization created — let's prove your first restore…",
+        );
       }
       setSuccess(true);
       toast.success(
         mode === "login" ? "Signed in" : "Organization ready",
         mode === "login"
           ? "Your control plane session is active."
-          : "Add a database to run your first drill."
+          : "Add a database to run your first drill.",
       );
       window.setTimeout(() => {
         window.location.href = "/";
@@ -132,7 +160,10 @@ export function LoginPage() {
       setError(message);
       setShake(true);
       window.setTimeout(() => setShake(false), 450);
-      toast.error(mode === "login" ? "Sign-in failed" : "Registration failed", message);
+      toast.error(
+        mode === "login" ? "Sign-in failed" : "Registration failed",
+        message,
+      );
     } finally {
       setLoading(false);
     }
@@ -153,7 +184,9 @@ export function LoginPage() {
             <RevenantMark size="md" glow />
             <div>
               <div className="font-semibold text-slate-900">Revenant Cloud</div>
-              <div className="text-xs text-slate-500">DR proof control plane</div>
+              <div className="text-xs text-slate-500">
+                DR proof control plane
+              </div>
             </div>
           </div>
 
@@ -161,10 +194,12 @@ export function LoginPage() {
             <div className="mb-6 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
               <Building2 size={18} className="mt-0.5 shrink-0 text-blue-600" />
               <div>
-                <p className="font-medium">You&apos;re joining {invite.organizationName}</p>
+                <p className="font-medium">
+                  You&apos;re joining {invite.organizationName}
+                </p>
                 <p className="mt-0.5 text-xs text-blue-800/80">
-                  Sign in as <span className="font-medium">{invite.email}</span> · role:{" "}
-                  {invite.role}
+                  Sign in as <span className="font-medium">{invite.email}</span>{" "}
+                  · role: {invite.role}
                 </p>
               </div>
             </div>
@@ -191,8 +226,32 @@ export function LoginPage() {
             providers={providers}
             inviteToken={inviteToken}
             onUnavailable={(label) =>
-              toast.info(`${label} sign-in`, "Coming soon — use email and password for now.")
+              toast.info(
+                `${label} sign-in`,
+                "Coming soon — use email and password for now.",
+              )
             }
+            onSuccess={() => {
+              void refreshUser().then(() => {
+                setSuccessMessage(
+                  "Signed in with your provider — loading your dashboard…",
+                );
+                setSuccess(true);
+                toast.success(
+                  "Signed in",
+                  "Your control plane session is active.",
+                );
+                window.setTimeout(() => {
+                  window.location.href = "/";
+                }, 900);
+              });
+            }}
+            onError={(message) => {
+              setError(message);
+              setShake(true);
+              window.setTimeout(() => setShake(false), 450);
+              toast.error("Sign-in failed", message);
+            }}
           />
 
           <form
@@ -222,8 +281,8 @@ export function LoginPage() {
                   <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                     <Shield size={14} className="shrink-0 text-brand" />
                     <span>
-                      Starts on <strong>{starterPlan.name}</strong> ({starterPlan.priceLabel}) —
-                      billing via website later
+                      Starts on <strong>{starterPlan.name}</strong> (
+                      {starterPlan.priceLabel}) — billing via website later
                     </span>
                   </div>
                 </div>
@@ -231,7 +290,10 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium text-slate-700"
+              >
                 Work email
               </label>
               <input
@@ -252,13 +314,20 @@ export function LoginPage() {
               value={password}
               onChange={setPassword}
               showStrength={mode === "register" || joiningViaInvite}
-              autoComplete={mode === "login" && !joiningViaInvite ? "current-password" : "new-password"}
+              autoComplete={
+                mode === "login" && !joiningViaInvite
+                  ? "current-password"
+                  : "new-password"
+              }
               invalid={!!error}
             />
 
             {mode === "login" && !joiningViaInvite && (
               <div className="text-right">
-                <Link to="/forgot-password" className="text-xs font-medium text-brand hover:underline">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-medium text-brand hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -304,7 +373,9 @@ export function LoginPage() {
                   </button>
                 </>
               ) : (
-                <span className="text-slate-500">Registration is invite-only.</span>
+                <span className="text-slate-500">
+                  Registration is invite-only.
+                </span>
               )
             ) : (
               <>
