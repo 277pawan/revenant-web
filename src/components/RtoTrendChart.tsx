@@ -153,9 +153,9 @@ export function RtoTrendChart({ days, loading }: RtoTrendChartProps) {
             <TrendingUp size={18} />
           </div>
           <div>
-            <h2 className="font-semibold text-slate-900">Recovery time (RTO)</h2>
+            <h2 className="font-semibold text-slate-900">Restore speed (RTO)</h2>
             <p className="text-xs text-slate-500">
-              How long each successful restore took · hover a day for details
+              How <span className="font-medium">long</span> each successful restore took · hover a day
             </p>
           </div>
         </div>

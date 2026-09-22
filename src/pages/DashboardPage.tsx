@@ -332,9 +332,17 @@ export function DashboardPage() {
         ))}
       </div>
 
-      <div className="mb-5 grid gap-4 xl:grid-cols-2">
-        <RtoTrendChart days={rtoDays} loading={trendsLoading} />
-        <RpoTrendChart days={rpoDays} loading={trendsLoading} />
+      <div className="mb-5">
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-slate-900">Recovery trends</h2>
+          <p className="text-xs text-slate-500">
+            Left = how fast you restored · Right = how old the backup data was
+          </p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <RtoTrendChart days={rtoDays} loading={trendsLoading} />
+          <RpoTrendChart days={rpoDays} loading={trendsLoading} />
+        </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
