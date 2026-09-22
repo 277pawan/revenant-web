@@ -13,17 +13,22 @@ import {
 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { SubscriptionBanner } from "../components/SubscriptionBanner";
+import { RecoveryReadinessCard } from "../components/RecoveryReadinessCard";
+import { RpoTrendChart } from "../components/RpoTrendChart";
 import { RtoTrendChart } from "../components/RtoTrendChart";
 import { DateTimeText } from "../components/DateTimeText";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { getPlanDefinition } from "../lib/plans";
+import { site } from "../lib/site";
 import { formatRelativeTime } from "../lib/datetime";
 import type {
   DashboardFleetRow,
   DashboardOverview,
+  DashboardRpoTrendPoint,
   DashboardRtoTrendPoint,
   FleetHealthStatus,
+  RecoveryReadinessResource,
 } from "../types/api";
 import { roleHasPermission } from "../types/api";
 
@@ -138,21 +143,38 @@ export function DashboardPage() {
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [rtoDays, setRtoDays] = useState<DashboardRtoTrendPoint[]>([]);
+  const [rpoDays, setRpoDays] = useState<DashboardRpoTrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<RecoveryReadinessResource | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setTrendsLoading(true);
     setError(null);
+    setReadiness(null);
     try {
-      const [{ overview: data }, { trends }] = await Promise.all([
+      const [{ overview: data }, rtoRes, rpoRes] = await Promise.all([
         api.getDashboardOverview(),
-        api.getDashboardRtoTrends(),
+        api.getDashboardRtoTrends().catch(() => ({ trends: { days: [] } })),
+        api.getDashboardRpoTrends().catch(() => ({ trends: { days: [] } })),
       ]);
       setOverview(data);
-      setRtoDays(trends.days);
+      setRtoDays(rtoRes.trends.days);
+      setRpoDays(rpoRes.trends.days);
+
+      const primary = data.fleet[0];
+      if (primary) {
+        try {
+          const { readiness: readinessData } = await api.getDatabaseReadiness(
+            primary.databaseId
+          );
+          setReadiness(readinessData);
+        } catch {
+          // Readiness is additive — don't block the dashboard if API is behind.
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -193,7 +215,7 @@ export function DashboardPage() {
     <AppShell>
       {user && <SubscriptionBanner user={user} />}
       {/* Hero */}
-      <section className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 px-6 py-8 text-white shadow-lg sm:px-8">
+      <section className="mb-5 overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 px-5 py-6 text-white shadow-sm sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div className="max-w-2xl">
             <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-blue-100">
@@ -202,9 +224,9 @@ export function DashboardPage() {
             </div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{heroHeadline}</h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
-              This is your Tuesday-morning view: did last night&apos;s snapshot restore, how long
-              did recovery take, and where is the signed evidence? Run drills, schedule them, and
-              alert the team when something breaks.
+              Recovery readiness — not just backup success. See whether your system could actually
+              recover within RTO/RPO, what changed since the last proof, and where the signed
+              evidence lives.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
               {canRun && (
@@ -241,9 +263,14 @@ export function DashboardPage() {
                 Subscribe to continue
               </div>
             ) : (
-              <div className="mt-3 text-[10px] uppercase tracking-wide text-slate-500">
-                Razorpay billing on marketing site
-              </div>
+              <a
+                href={site.pricingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block text-[10px] uppercase tracking-wide text-slate-400 hover:text-white"
+              >
+                Billing on marketing site →
+              </a>
             )}
           </div>
         </div>
@@ -255,8 +282,9 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* KPI cards */}
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {readiness && <RecoveryReadinessCard data={readiness} compact />}
+
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
             label: "7-day pass rate",
@@ -304,8 +332,9 @@ export function DashboardPage() {
         ))}
       </div>
 
-      <div className="mb-8">
+      <div className="mb-5 grid gap-4 xl:grid-cols-2">
         <RtoTrendChart days={rtoDays} loading={trendsLoading} />
+        <RpoTrendChart days={rpoDays} loading={trendsLoading} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">

@@ -10,6 +10,9 @@ import { useToast } from "../components/toast/ToastProvider";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { getPlanDefinition } from "../lib/plans";
+import { site } from "../lib/site";
+import { canAccessCloudDashboard } from "../lib/subscription-access";
+import { SubscriptionGate } from "../components/SubscriptionGate";
 import type {
   AuthProviderInfo,
   AuthProvidersResponse,
@@ -18,14 +21,18 @@ import type {
 
 type AuthMode = "login" | "register";
 
-const OAUTH_PROVIDER_IDS = new Set<AuthProviderInfo["id"]>(["google", "github"]);
+const OAUTH_PROVIDER_IDS = new Set<AuthProviderInfo["id"]>([
+  "google",
+  "github",
+  "microsoft",
+]);
 
 function filterOAuthProviders(providers: AuthProviderInfo[]): AuthProviderInfo[] {
   return providers.filter((p) => OAUTH_PROVIDER_IDS.has(p.id));
 }
 
 export function LoginPage() {
-  const { user, login, register, acceptInvite, refreshUser } = useAuth();
+  const { user, login, register, acceptInvite, refreshUser, logout } = useAuth();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -126,24 +133,40 @@ export function LoginPage() {
     setSearchParams(nextParams, { replace: true });
   }
 
-  if (user && !success) return <Navigate to="/" replace />;
+  if (user && !success) {
+    if (canAccessCloudDashboard(user)) return <Navigate to="/" replace />;
+    return <SubscriptionGate user={user} onSignOut={() => void logout()} />;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
+      let signedInUser: Awaited<ReturnType<typeof login>>;
       if (joiningViaInvite && inviteToken) {
-        await acceptInvite({ inviteToken, email, password });
+        signedInUser = await acceptInvite({ inviteToken, email, password });
         setSuccessMessage(`Welcome to ${invite?.organizationName}…`);
       } else if (mode === "login") {
-        await login({ email, password });
+        signedInUser = await login({ email, password });
+        if (!canAccessCloudDashboard(signedInUser)) {
+          toast.info(
+            "Starter trial required",
+            "Start or renew Starter on the marketing site to use the cloud dashboard.",
+          );
+          setLoading(false);
+          return;
+        }
         setSuccessMessage("Welcome back — loading your fleet posture…");
       } else {
-        await register({ organizationName: orgName, email, password });
+        signedInUser = await register({ organizationName: orgName, email, password });
         setSuccessMessage(
           "Organization created — let's prove your first restore…",
         );
+      }
+      if (!canAccessCloudDashboard(signedInUser)) {
+        setLoading(false);
+        return;
       }
       setSuccess(true);
       toast.success(
@@ -205,6 +228,17 @@ export function LoginPage() {
             </div>
           )}
 
+          <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <strong>Starter trial required</strong> for cloud access. Register on{" "}
+            <a
+              href={`${site.marketingUrl}/register`}
+              className="font-medium text-brand hover:underline"
+            >
+              {site.marketingUrl.replace(/^https?:\/\//, "")}
+            </a>{" "}
+            for 30 days free — no card at signup.
+          </div>
+
           <div className="mb-6">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               {joiningViaInvite
@@ -226,13 +260,20 @@ export function LoginPage() {
             providers={providers}
             inviteToken={inviteToken}
             onUnavailable={(label) =>
-              toast.info(
-                `${label} sign-in`,
-                "Coming soon — use email and password for now.",
+              toast.error(
+                `${label} sign-in unavailable`,
+                "OAuth is not configured on this server. Use email and password.",
               )
             }
             onSuccess={() => {
-              void refreshUser().then(() => {
+              void refreshUser().then((u) => {
+                if (!canAccessCloudDashboard(u)) {
+                  toast.info(
+                    "Starter trial required",
+                    "Start or renew Starter on the marketing site to use the cloud dashboard.",
+                  );
+                  return;
+                }
                 setSuccessMessage(
                   "Signed in with your provider — loading your dashboard…",
                 );
@@ -393,6 +434,34 @@ export function LoginPage() {
 
           <p className="mt-8 text-center text-xs text-slate-400">
             Need access? Ask your organization administrator.
+            <span className="mt-2 block">
+              <a
+                href={site.docsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand hover:underline"
+              >
+                Documentation
+              </a>
+              {" · "}
+              <a
+                href={site.cliUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand hover:underline"
+              >
+                CLI setup
+              </a>
+              {" · "}
+              <a
+                href={site.marketingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand hover:underline"
+              >
+                Marketing site
+              </a>
+            </span>
             <span className="mt-1 block font-mono text-slate-400">
               Already have the CLI?{" "}
               <span className="text-brand">revenant verify</span>

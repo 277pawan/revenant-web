@@ -8,7 +8,10 @@ import type {
   CreateWebhookResponse,
   AuthProvidersResponse,
   DashboardOverview,
+  DashboardRpoTrend,
   DashboardRtoTrend,
+  RecoveryChallengeResource,
+  ReadinessHistoryPoint,
   AcceptInviteRequest,
   ValidationPlanTemplateResource,
   ValidationPlanTemplateDetail,
@@ -38,7 +41,9 @@ import type {
   WebhookEndpointResource,
 } from "../types/api";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+import { site } from "./site";
+
+const API_URL = site.apiUrl;
 const TOKEN_KEY = "revenant_token";
 
 function authHeaders(): Record<string, string> {
@@ -151,6 +156,38 @@ export const api = {
     return request("/api/v1/dashboard/rto-trends");
   },
 
+  getDashboardRpoTrends(): Promise<{ trends: DashboardRpoTrend }> {
+    return request("/api/v1/dashboard/rpo-trends");
+  },
+
+  getReadinessHistory(databaseId: string): Promise<{ history: ReadinessHistoryPoint[] }> {
+    return request(`/api/v1/databases/${databaseId}/readiness/history`);
+  },
+
+  listRecoveryChallenges(
+    databaseId: string
+  ): Promise<{ challenges: RecoveryChallengeResource[] }> {
+    return request(`/api/v1/databases/${databaseId}/challenges`);
+  },
+
+  createRecoveryChallenge(
+    databaseId: string,
+    body: { name: string; strategy: "latest" | "days_ago"; daysAgo?: number }
+  ): Promise<{ challenge: RecoveryChallengeResource }> {
+    return request(`/api/v1/databases/${databaseId}/challenges`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  runRecoveryChallenge(challengeId: string): Promise<{ jobId: string }> {
+    return request(`/api/v1/challenges/${challengeId}/run`, { method: "POST" });
+  },
+
+  deleteRecoveryChallenge(challengeId: string): Promise<void> {
+    return request(`/api/v1/challenges/${challengeId}`, { method: "DELETE" });
+  },
+
   listValidationPlanTemplates(): Promise<{ templates: ValidationPlanTemplateResource[] }> {
     return request("/api/v1/validation-plans/templates");
   },
@@ -171,6 +208,72 @@ export const api = {
     search?: string
   ): Promise<Paginated<DatabaseResource>> {
     return request(withQuery("/api/v1/databases", { page, pageSize, search }));
+  },
+
+  getDatabaseReadiness(
+    id: string
+  ): Promise<{ readiness: import("../types/api").RecoveryReadinessResource }> {
+    return request(`/api/v1/databases/${id}/readiness`);
+  },
+
+  getRecoveryContract(
+    databaseId: string
+  ): Promise<{ contract: import("../types/api").RecoveryContractResource }> {
+    return request(`/api/v1/databases/${databaseId}/recovery-contract`);
+  },
+
+  upsertRecoveryContract(
+    databaseId: string,
+    body: { yamlText: string }
+  ): Promise<{ contract: import("../types/api").RecoveryContractResource }> {
+    return request(`/api/v1/databases/${databaseId}/recovery-contract`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  getRecoveryDrift(
+    databaseId: string
+  ): Promise<{ drift: { events: import("../types/api").DriftEventResource[] } }> {
+    return request(`/api/v1/databases/${databaseId}/drift`);
+  },
+
+  async downloadRecoveryPassportPdf(jobId: string): Promise<void> {
+    await downloadAttachment(
+      `/api/v1/jobs/${jobId}/passport/pdf`,
+      `recovery-passport-${jobId}.pdf`
+    );
+  },
+
+  async downloadRecoveryPassport(jobId: string): Promise<void> {
+    const token = localStorage.getItem("revenant_token");
+    const res = await fetch(`${API_URL}/api/v1/jobs/${jobId}/passport`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const body = err as { error?: string; code?: string };
+      if (body.code === "MIGRATION_REQUIRED" || body.code === "PASSPORT_UNAVAILABLE") {
+        throw new Error(
+          body.error ??
+            "Recovery passport requires migration 0016_recovery_readiness on the API database."
+        );
+      }
+      if (body.code === "NOT_READY") {
+        throw new Error(
+          "Recovery passport is only available for runs that finish with Pass status."
+        );
+      }
+      throw new Error(body.error ?? "Recovery passport not found for this run");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recovery-passport-${jobId}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 
   getDatabase(id: string): Promise<{ database: DatabaseResource }> {
@@ -263,8 +366,19 @@ export const api = {
     return request(`/api/v1/team/members/${id}`, { method: "DELETE" });
   },
 
-  listJobs(page = 1, pageSize = 20): Promise<Paginated<JobResource>> {
-    return request(withQuery("/api/v1/jobs", { page, pageSize }));
+  listJobs(
+    page = 1,
+    pageSize = 20,
+    filters?: { databaseId?: string; search?: string }
+  ): Promise<Paginated<JobResource>> {
+    return request(
+      withQuery("/api/v1/jobs", {
+        page,
+        pageSize,
+        databaseId: filters?.databaseId,
+        search: filters?.search,
+      })
+    );
   },
 
   getJob(id: string): Promise<{ job: JobDetailResource }> {
@@ -376,4 +490,22 @@ export const api = {
   ): Promise<Paginated<AuditEventResource>> {
     return request(withQuery("/api/v1/audit", { page, pageSize, search }));
   },
+
+  getOrganizationSettings(): Promise<{ organization: import("../types/api").OrganizationSettingsResource }> {
+    return request("/api/v1/settings/organization");
+  },
+
+  updateOrganizationSettings(
+    body: import("../types/api").UpdateOrganizationRequest
+  ): Promise<{ organization: import("../types/api").OrganizationSettingsResource }> {
+    return request("/api/v1/settings/organization", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  getSubscription(): Promise<{ subscription: import("../types/api").OrgSubscriptionSummary }> {
+    return request("/api/v1/billing/subscription");
+  },
+
 };

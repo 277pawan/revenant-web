@@ -1,11 +1,12 @@
-import { Field, Select } from "./ui/Field";
+import { Field, Input, Select } from "./ui/Field";
 import {
-  MINUTE_OPTIONS,
   SCHEDULE_FREQUENCIES,
   TIMEZONE_OPTIONS,
   WEEKDAYS,
   defaultTimezone,
   formatTime12h,
+  formatTime24hValue,
+  parseTime24hValue,
   type ScheduleFrequency,
 } from "../lib/schedule";
 
@@ -23,8 +24,6 @@ type Props = {
   onChange: (patch: Partial<ScheduleTimingValues>) => void;
   errors?: Partial<Record<keyof ScheduleTimingValues | "timing", string>>;
 };
-
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 const DAYS_OF_MONTH = Array.from({ length: 28 }, (_, i) => i + 1);
 
@@ -80,7 +79,7 @@ export function ScheduleTimingFields({ values, onChange, errors }: Props) {
             onChange={(e) => onChange({ dayOfWeek: Number(e.target.value) })}
           >
             {WEEKDAYS.map((d) => (
-              <option key={d.value} value={d.value}>{d.label}</option>
+              <option key={d.value} value={String(d.value)}>{d.label}</option>
             ))}
           </Select>
         </Field>
@@ -97,7 +96,7 @@ export function ScheduleTimingFields({ values, onChange, errors }: Props) {
             onChange={(e) => onChange({ dayOfMonth: Number(e.target.value) })}
           >
             {DAYS_OF_MONTH.map((d) => (
-              <option key={d} value={d}>
+              <option key={d} value={String(d)}>
                 Day {d}
               </option>
             ))}
@@ -106,32 +105,21 @@ export function ScheduleTimingFields({ values, onChange, errors }: Props) {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Time" error={errors?.hour ?? errors?.minute}>
-          <div className="flex gap-2">
-            <Select
-              value={String(values.hour)}
-              onChange={(e) => onChange({ hour: Number(e.target.value) })}
-              className="flex-1"
-            >
-              {HOURS.map((h) => (
-                <option key={h} value={h}>
-                  {formatTime12h(h, 0).replace(":00", "")}
-                </option>
-              ))}
-            </Select>
-            <span className="self-center text-slate-400">:</span>
-            <Select
-              value={String(values.minute)}
-              onChange={(e) => onChange({ minute: Number(e.target.value) })}
-              className="w-24"
-            >
-              {MINUTE_OPTIONS.map((m) => (
-                <option key={m} value={m}>
-                  {String(m).padStart(2, "0")}
-                </option>
-              ))}
-            </Select>
-          </div>
+        <Field
+          label="Time"
+          hint={`Selected: ${preview}`}
+          error={errors?.hour ?? errors?.minute}
+        >
+          <Input
+            type="time"
+            step={900}
+            value={formatTime24hValue(values.hour, values.minute)}
+            onChange={(e) => {
+              const parsed = parseTime24hValue(e.target.value);
+              if (parsed) onChange(parsed);
+            }}
+            className="max-w-[11rem]"
+          />
         </Field>
 
         <Field label="Timezone" error={errors?.timezone}>

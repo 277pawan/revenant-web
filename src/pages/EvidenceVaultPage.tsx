@@ -103,6 +103,7 @@ export function EvidenceVaultPage() {
           <thead className="bg-slate-50 text-left text-slate-600">
             <tr>
               <th className="px-4 py-3 font-medium">Workflow</th>
+              <th className="px-4 py-3 font-medium">Type</th>
               <th className="px-4 py-3 font-medium">Job</th>
               <th className="px-4 py-3 font-medium">SHA-256</th>
               <th className="px-4 py-3 font-medium">Size</th>
@@ -113,13 +114,13 @@ export function EvidenceVaultPage() {
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   Loading…
                 </td>
               </tr>
             ) : artifacts.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
                   <FileCheck className="mx-auto mb-2 text-slate-300" size={32} />
                   {debouncedSearch.trim()
                     ? `No evidence matches “${debouncedSearch.trim()}”.`
@@ -130,6 +131,9 @@ export function EvidenceVaultPage() {
               artifacts.map((a) => (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-900">{a.databaseName}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {a.kind === "passport" ? "Recovery passport" : "Drill report"}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-600">
                     {a.jobId.slice(0, 8)}…
                   </td>

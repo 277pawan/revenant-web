@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Calendar, Plus } from "lucide-react";
+import { Calendar, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimeText } from "../components/DateTimeText";
@@ -21,6 +21,7 @@ import { useAuth } from "../lib/auth";
 import {
   buildCronExpression,
   describeCronExpression,
+  parseCronExpression,
   suggestScheduleName,
 } from "../lib/schedule";
 import {
@@ -71,6 +72,7 @@ export function SchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleResource | null>(null);
   const [saving, setSaving] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<ScheduleResource | null>(null);
   const [removing, setRemoving] = useState(false);
@@ -123,7 +125,13 @@ export function SchedulesPage() {
     );
   }, [schedules, debouncedListSearch]);
 
-  async function onCreate(values: ScheduleFormValues) {
+  function closeForm() {
+    setShowForm(false);
+    setEditingSchedule(null);
+    reset(defaultFormValues());
+  }
+
+  async function onSave(values: ScheduleFormValues) {
     setSaving(true);
     setError(null);
     try {
@@ -135,22 +143,38 @@ export function SchedulesPage() {
         dayOfMonth: values.dayOfMonth,
       });
 
-      await api.createSchedule({
-        databaseId: values.databaseId,
-        name: values.name.trim(),
-        cronExpression,
-        timezone: values.timezone,
-        enabled: values.enabled,
-      });
+      if (editingSchedule) {
+        await api.updateSchedule(editingSchedule.id, {
+          name: values.name.trim(),
+          cronExpression,
+          timezone: values.timezone,
+          enabled: values.enabled,
+        });
+        toast.success(
+          "Schedule updated",
+          describeCronExpression(cronExpression, values.timezone)
+        );
+      } else {
+        await api.createSchedule({
+          databaseId: values.databaseId,
+          name: values.name.trim(),
+          cronExpression,
+          timezone: values.timezone,
+          enabled: values.enabled,
+        });
+        toast.success(
+          "Schedule created",
+          describeCronExpression(cronExpression, values.timezone)
+        );
+      }
 
-      toast.success("Schedule created", describeCronExpression(cronExpression, values.timezone));
-      reset(defaultFormValues());
-      setShowForm(false);
-      await load(1);
+      closeForm();
+      await load(editingSchedule ? page : 1);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create schedule";
+      const message =
+        err instanceof Error ? err.message : "Failed to save schedule";
       setError(message);
-      toast.error("Create failed", message);
+      toast.error(editingSchedule ? "Update failed" : "Create failed", message);
     } finally {
       setSaving(false);
     }
@@ -192,7 +216,21 @@ export function SchedulesPage() {
   }
 
   function openCreateForm() {
+    setEditingSchedule(null);
     reset(defaultFormValues());
+    setShowForm(true);
+  }
+
+  function openEditForm(schedule: ScheduleResource) {
+    const timing = parseCronExpression(schedule.cronExpression) ?? scheduleTimingDefaults();
+    setEditingSchedule(schedule);
+    reset({
+      databaseId: schedule.databaseId,
+      name: schedule.name,
+      ...timing,
+      timezone: schedule.timezone,
+      enabled: schedule.enabled,
+    });
     setShowForm(true);
   }
 
@@ -223,7 +261,7 @@ export function SchedulesPage() {
         {canWrite && (
           <button
             type="button"
-            onClick={() => (showForm ? setShowForm(false) : openCreateForm())}
+            onClick={() => (showForm ? closeForm() : openCreateForm())}
             className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand/90"
           >
             <Plus size={16} />
@@ -240,30 +278,42 @@ export function SchedulesPage() {
 
       {showForm && canWrite && (
         <form
-          onSubmit={handleSubmit(onCreate)}
+          onSubmit={handleSubmit(onSave)}
           className="mb-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
         >
-          <h2 className="mb-1 text-lg font-medium text-slate-900">Create schedule</h2>
+          <h2 className="mb-1 text-lg font-medium text-slate-900">
+            {editingSchedule ? "Edit schedule" : "Create schedule"}
+          </h2>
           <p className="mb-5 text-sm text-slate-500">
-            Search and select a workflow, then choose when it should run.
+            {editingSchedule
+              ? "Update the name, timing, or timezone for this schedule."
+              : "Search and select a workflow, then choose when it should run."}
           </p>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="space-y-4">
-              <Field label="Workflow" required error={errors.databaseId?.message}>
-                <Controller
-                  name="databaseId"
-                  control={control}
-                  render={({ field }) => (
-                    <WorkflowPicker
-                      value={field.value}
-                      onChange={(id) => field.onChange(id)}
-                      excludeIds={scheduledDbIds}
-                      invalid={!!errors.databaseId}
-                    />
-                  )}
-                />
-              </Field>
+              {editingSchedule ? (
+                <Field label="Workflow">
+                  <div className="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    {editingSchedule.databaseName}
+                  </div>
+                </Field>
+              ) : (
+                <Field label="Workflow" required error={errors.databaseId?.message}>
+                  <Controller
+                    name="databaseId"
+                    control={control}
+                    render={({ field }) => (
+                      <WorkflowPicker
+                        value={field.value}
+                        onChange={(id) => field.onChange(id)}
+                        excludeIds={scheduledDbIds}
+                        invalid={!!errors.databaseId}
+                      />
+                    )}
+                  />
+                </Field>
+              )}
 
               <Field label="Schedule name" required error={errors.name?.message}>
                 <div className="flex gap-2">
@@ -276,6 +326,17 @@ export function SchedulesPage() {
                     Suggest
                   </button>
                 </div>
+              </Field>
+
+              <Field label="Status">
+                <label className="mt-1 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    className="rounded border-slate-300 text-brand focus:ring-brand/20"
+                    {...register("enabled")}
+                  />
+                  Schedule is active
+                </label>
               </Field>
             </div>
 
@@ -312,11 +373,11 @@ export function SchedulesPage() {
               disabled={saving}
               className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             >
-              {saving ? "Saving…" : "Create schedule"}
+              {saving ? "Saving…" : editingSchedule ? "Save changes" : "Create schedule"}
             </button>
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={closeForm}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700"
             >
               Cancel
@@ -385,21 +446,36 @@ export function SchedulesPage() {
                     </span>
                   </td>
                   {canWrite && (
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => void toggleEnabled(s)}
-                        className="mr-2 text-xs text-brand hover:underline"
-                      >
-                        {s.enabled ? "Pause" : "Enable"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRemoveTarget(s)}
-                        className="text-xs text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => openEditForm(s)}
+                          className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+                          title="Edit schedule"
+                          aria-label="Edit schedule"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleEnabled(s)}
+                          className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
+                          title={s.enabled ? "Pause schedule" : "Enable schedule"}
+                          aria-label={s.enabled ? "Pause schedule" : "Enable schedule"}
+                        >
+                          {s.enabled ? <Pause size={16} /> : <Play size={16} />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRemoveTarget(s)}
+                          className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                          title="Delete schedule"
+                          aria-label="Delete schedule"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>

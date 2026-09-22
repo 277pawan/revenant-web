@@ -18,7 +18,9 @@ export function RunDetailPage() {
   const toast = useToast();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
   const canDownload = user ? roleHasPermission(user.role, "evidence:read") : false;
-  const [downloading, setDownloading] = useState<"json" | "pdf" | null>(null);
+  const [downloading, setDownloading] = useState<
+    "json" | "pdf" | "passport" | "passport-pdf" | null
+  >(null);
 
   const [job, setJob] = useState<JobDetailResource | null>(null);
   const [service, setService] = useState<PlanServiceResource | null>(null);
@@ -28,25 +30,42 @@ export function RunDetailPage() {
     null
   );
 
-  const load = useCallback(async () => {
-    if (!jobId) return;
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!jobId) return;
+      if (!opts?.silent) setLoading(true);
+      try {
+        const [jobRes, servicesRes] = await Promise.all([
+          api.getJob(jobId),
+          api.listPlanServices(),
+        ]);
+        setJob(jobRes.job);
+        const svc = servicesRes.services.find(
+          (s) => s.databaseId === (databaseId ?? jobRes.job.databaseId)
+        );
+        setService(svc ?? null);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load run");
+        throw err;
+      } finally {
+        if (!opts?.silent) setLoading(false);
+      }
+    },
+    [jobId, databaseId]
+  );
+
+  async function refreshRun() {
     try {
-      const [jobRes, servicesRes] = await Promise.all([
-        api.getJob(jobId),
-        api.listPlanServices(),
-      ]);
-      setJob(jobRes.job);
-      const svc = servicesRes.services.find(
-        (s) => s.databaseId === (databaseId ?? jobRes.job.databaseId)
-      );
-      setService(svc ?? null);
-      setError(null);
+      await load({ silent: true });
+      toast.success("Refreshed", "Run details updated.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load run");
-    } finally {
-      setLoading(false);
+      toast.error(
+        "Refresh failed",
+        err instanceof Error ? err.message : "Could not reload run"
+      );
     }
-  }, [jobId, databaseId]);
+  }
 
   useEffect(() => {
     void load();
@@ -74,6 +93,38 @@ export function RunDetailPage() {
       toast.error(
         "Download failed",
         err instanceof Error ? err.message : "Could not download report"
+      );
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function downloadPassport() {
+    if (!job || job.status !== "pass") return;
+    setDownloading("passport");
+    try {
+      await api.downloadRecoveryPassport(job.id);
+      toast.success("Recovery passport downloaded", "Signed recovery evidence JSON.");
+    } catch (err) {
+      toast.error(
+        "Passport unavailable",
+        err instanceof Error ? err.message : "Run a successful drill first"
+      );
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  async function downloadPassportPdf() {
+    if (!job || job.status !== "pass") return;
+    setDownloading("passport-pdf");
+    try {
+      await api.downloadRecoveryPassportPdf(job.id);
+      toast.success("Passport PDF saved", "Branded recovery passport for auditors.");
+    } catch (err) {
+      toast.error(
+        "PDF unavailable",
+        err instanceof Error ? err.message : "Run a successful drill first"
       );
     } finally {
       setDownloading(null);
@@ -137,7 +188,7 @@ export function RunDetailPage() {
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
               <button
                 type="button"
-                onClick={() => void load()}
+                onClick={() => void refreshRun()}
                 className="rounded-md border border-slate-300 bg-white p-2"
                 aria-label="Refresh"
               >
@@ -181,6 +232,38 @@ export function RunDetailPage() {
                     )}
                     JSON
                   </button>
+                  {job.status === "pass" && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={downloading !== null}
+                        onClick={() => void downloadPassportPdf()}
+                        title="Download branded recovery passport PDF"
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-emerald-400 bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 sm:flex-none hover:bg-emerald-700"
+                      >
+                        {downloading === "passport-pdf" ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <FileText size={14} />
+                        )}
+                        Passport PDF
+                      </button>
+                      <button
+                        type="button"
+                        disabled={downloading !== null}
+                        onClick={() => void downloadPassport()}
+                        title="Download signed recovery passport JSON"
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900 disabled:opacity-50 sm:flex-none hover:bg-emerald-100"
+                      >
+                        {downloading === "passport" ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Download size={14} />
+                        )}
+                        Passport JSON
+                      </button>
+                    </>
+                  )}
                 </>
               )}
               {canRun && (

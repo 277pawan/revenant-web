@@ -82,6 +82,12 @@ export function OAuthButtons({
     }
   }
 
+  const liveProviders = providers.filter(
+    (p) => p.status === "live" && p.authorizePath
+  );
+
+  if (liveProviders.length === 0) return null;
+
   return (
     <div className="space-y-3">
       <div className="relative flex items-center gap-3 py-1">
@@ -92,7 +98,7 @@ export function OAuthButtons({
         <div className="h-px flex-1 bg-slate-200" />
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {providers.map((provider) => {
+        {liveProviders.map((provider) => {
           const busy = busyProvider === provider.id;
           return (
             <button
@@ -100,19 +106,10 @@ export function OAuthButtons({
               type="button"
               disabled={busyProvider != null}
               onClick={() => void handleClick(provider)}
-              className={`group relative flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                provider.status === "live"
-                  ? "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
-                  : "border-slate-100 bg-slate-50/80 text-slate-400 hover:border-slate-200"
-              }`}
+              className="group flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 transition-all duration-200 hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ProviderIcon id={provider.id} />}
               <span>{provider.label}</span>
-              {provider.status !== "live" && (
-                <span className="absolute -right-1 -top-1 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-                  Soon
-                </span>
-              )}
             </button>
           );
         })}

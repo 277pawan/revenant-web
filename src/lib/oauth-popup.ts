@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+import { site } from "./site";
+
+const API_URL = site.apiUrl;
 
 export const OAUTH_COMPLETE_PATH = "/auth/oauth/complete";
 export const OAUTH_MESSAGE_TYPE = "revenant:oauth";

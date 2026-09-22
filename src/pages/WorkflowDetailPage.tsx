@@ -1,18 +1,37 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChevronRight, MoreVertical, Play, RefreshCw } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { PaginationBar } from "../components/PaginationBar";
+import { RecoveryChallengesPanel } from "../components/RecoveryChallengesPanel";
+import { RecoveryContractPanel } from "../components/RecoveryContractPanel";
+import { RecoveryDriftPanel } from "../components/RecoveryDriftPanel";
+import { RecoveryReadinessCard } from "../components/RecoveryReadinessCard";
+import { ReadinessTrendChart } from "../components/ReadinessTrendChart";
+import { WorkflowExecutionInfo } from "../components/WorkflowExecutionInfo";
+import { TableSearchBar } from "../components/TableSearchBar";
 import { useToast } from "../components/toast/ToastProvider";
 import { StatusBadge } from "../components/workflow/StatusBadge";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import type { OrganizationPlan } from "../types/api";
 import {
   formatDuration,
   formatRelativeTime,
   runShortId,
   workflowSlug,
 } from "../lib/workflow";
-import { roleHasPermission, type PlanServiceResource } from "../types/api";
+import {
+  roleHasPermission,
+  type JobResource,
+  type PaginationMeta,
+  type PlanServiceResource,
+  type ReadinessHistoryPoint,
+  type RecoveryReadinessResource,
+} from "../types/api";
+
+const JOBS_PAGE_SIZE = 10;
 
 export function WorkflowDetailPage() {
   const { databaseId } = useParams<{ databaseId: string }>();
@@ -21,56 +40,163 @@ export function WorkflowDetailPage() {
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
 
   const [service, setService] = useState<PlanServiceResource | null>(null);
+  const [jobs, setJobs] = useState<JobResource[]>([]);
+  const [jobsPagination, setJobsPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: JOBS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+  });
+  const [jobsPage, setJobsPage] = useState(1);
+  const [jobsSearch, setJobsSearch] = useState("");
+  const debouncedJobsSearch = useDebouncedValue(jobsSearch, 300);
+  const [loadingJobs, setLoadingJobs] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [readiness, setReadiness] = useState<RecoveryReadinessResource | null>(null);
+  const [readinessHistory, setReadinessHistory] = useState<ReadinessHistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [refreshToken, setRefreshToken] = useState(0);
 
-  const load = useCallback(async () => {
+  const loadService = useCallback(async () => {
     if (!databaseId) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await api.listPlanServices();
-      const found = res.services.find((s) => s.databaseId === databaseId);
-      if (!found) {
-        setError("Workflow not found");
-        setService(null);
-      } else {
+      const [servicesRes, databaseRes] = await Promise.all([
+        api.listPlanServices(),
+        api.getDatabase(databaseId),
+      ]);
+      const found = servicesRes.services.find((s) => s.databaseId === databaseId);
+      if (found) {
         setService(found);
+      } else {
+        const { database } = databaseRes;
+        let planName = database.validationPlanName ?? "default";
+        let planVersion = database.validationPlanVersion ?? 0;
+        let planUpdatedAt = database.updatedAt;
+        if (database.hasValidationPlan) {
+          try {
+            const { plan } = await api.getValidationPlan(databaseId);
+            planName = plan.name;
+            planVersion = plan.version;
+            planUpdatedAt = plan.updatedAt;
+          } catch {
+            // Use database summary fields when plan fetch fails.
+          }
+        }
+        setService({
+          databaseId: database.id,
+          databaseName: database.name,
+          planName,
+          planVersion,
+          planUpdatedAt,
+          recoveryMode: database.recoveryMode,
+          runner: null,
+          jobs: [],
+        });
+      }
+      try {
+        const { readiness: readinessData } = await api.getDatabaseReadiness(databaseId);
+        setReadiness(readinessData);
+      } catch {
+        setReadiness(null);
+      }
+      setHistoryLoading(true);
+      try {
+        const { history } = await api.getReadinessHistory(databaseId);
+        setReadinessHistory(history);
+      } catch {
+        setReadinessHistory([]);
+      } finally {
+        setHistoryLoading(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load workflow");
+      setService(null);
     } finally {
       setLoading(false);
     }
   }, [databaseId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loadJobs = useCallback(async () => {
+    if (!databaseId) return;
+    setLoadingJobs(true);
+    try {
+      const res = await api.listJobs(jobsPage, JOBS_PAGE_SIZE, {
+        databaseId,
+        search: debouncedJobsSearch.trim() || undefined,
+      });
+      setJobs(res.data);
+      setJobsPagination(res.pagination);
+    } catch {
+      setJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  }, [databaseId, jobsPage, debouncedJobsSearch]);
 
-  const hasBusy = service?.jobs.some(
-    (j) => j.status === "pending" || j.status === "running"
-  );
+  useEffect(() => {
+    void loadService();
+  }, [loadService]);
+
+  useEffect(() => {
+    setJobsPage(1);
+  }, [debouncedJobsSearch]);
+
+  useEffect(() => {
+    void loadJobs();
+  }, [loadJobs]);
+
+  const hasBusy = jobs.some((j) => j.status === "pending" || j.status === "running");
+  const wasBusy = useRef(false);
 
   useEffect(() => {
     if (!hasBusy) return;
-    const t = setInterval(() => void load(), 4000);
+    const t = setInterval(() => {
+      void loadJobs();
+      void loadService();
+    }, 4000);
     return () => clearInterval(t);
-  }, [hasBusy, load]);
+  }, [hasBusy, loadJobs, loadService]);
+
+  useEffect(() => {
+    if (wasBusy.current && !hasBusy) {
+      setRefreshToken((t) => t + 1);
+      void loadService();
+    }
+    wasBusy.current = hasBusy;
+  }, [hasBusy, loadService]);
+
+  async function refreshAll() {
+    try {
+      await Promise.all([loadService(), loadJobs()]);
+      setRefreshToken((t) => t + 1);
+      toast.success("Refreshed", "Workflow, readiness, and drift updated.");
+    } catch (err) {
+      toast.error(
+        "Refresh failed",
+        err instanceof Error ? err.message : "Could not reload workflow"
+      );
+    }
+  }
 
   async function runWorkflow(drillKind: "full" | "verify" = "full") {
     if (!databaseId || !canRun) return;
     setRunning(true);
     try {
       await api.createJob({ databaseId, drillKind });
+      const planHint = service?.planVersion
+        ? `Using saved validation plan v${service.planVersion}.`
+        : "Using the latest saved validation plan.";
       toast.success(
         drillKind === "full" ? "Full restore drill queued" : "Verify queued",
         drillKind === "full"
-          ? "Snapshot → restore → validate → cleanup (AWS) or checks on direct Postgres."
-          : "Using the latest snapshot / live connection."
+          ? `${planHint} Snapshot → restore → validate → cleanup.`
+          : `${planHint} Using the latest snapshot / live connection.`
       );
-      await load();
+      await refreshAll();
     } catch (err) {
       toast.error(
         "Could not start run",
@@ -100,14 +226,15 @@ export function WorkflowDetailPage() {
   }
 
   const slug = workflowSlug(service);
-  const last = service.jobs[0];
+  const last = jobs[0] ?? service.jobs[0];
   const online =
     service.runner?.lastSeenAt &&
     Date.now() - new Date(service.runner.lastSeenAt).getTime() < 60_000;
 
   const awsMode = service.recoveryMode === "aws-rds";
-  const passCount = service.jobs.filter((j) => j.status === "pass").length;
-  const totalRuns = service.jobs.length;
+  const recentJobs = service.jobs;
+  const passCount = recentJobs.filter((j) => j.status === "pass").length;
+  const totalRuns = recentJobs.length;
 
   return (
     <AppShell>
@@ -125,7 +252,7 @@ export function WorkflowDetailPage() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => void refreshAll()}
             className="rounded-md border border-slate-300 bg-white p-2 text-slate-600 hover:bg-slate-50"
           >
             <RefreshCw size={16} />
@@ -167,6 +294,32 @@ export function WorkflowDetailPage() {
         </div>
       </div>
 
+      {readiness && <RecoveryReadinessCard data={readiness} />}
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <ReadinessTrendChart history={readinessHistory} loading={historyLoading} />
+        <RecoveryChallengesPanel
+          databaseId={service.databaseId}
+          canRun={canRun}
+          refreshToken={refreshToken}
+        />
+      </div>
+
+      <WorkflowExecutionInfo
+        plan={(user?.organizationPlan ?? "starter") as OrganizationPlan}
+        service={service}
+      />
+
+      <div className="mb-6 space-y-4">
+        <RecoveryDriftPanel
+          databaseId={service.databaseId}
+          onRunDrill={canRun ? () => void runWorkflow("full") : undefined}
+          runningDrill={running}
+          refreshToken={refreshToken}
+        />
+        <RecoveryContractPanel databaseId={service.databaseId} />
+      </div>
+
       <div className="mb-6 grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -179,7 +332,14 @@ export function WorkflowDetailPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Plan</dt>
-              <dd className="font-medium text-slate-900">{service.planName}</dd>
+              <dd className="font-medium text-slate-900">
+                {service.planName}
+                {service.planVersion != null && (
+                  <span className="ml-1 text-xs font-normal text-slate-500">
+                    v{service.planVersion}
+                  </span>
+                )}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-slate-500">Drill</dt>
@@ -253,59 +413,81 @@ export function WorkflowDetailPage() {
         </section>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section
+        id="workflow-execution-history"
+        className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm scroll-mt-6"
+      >
         <div className="border-b border-slate-100 px-4 py-3">
           <h2 className="font-semibold text-slate-900">Execution history</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {jobsPagination.total} run{jobsPagination.total === 1 ? "" : "s"} total
+          </p>
         </div>
 
-        {service.jobs.length === 0 ? (
+        <TableSearchBar
+          value={jobsSearch}
+          onChange={setJobsSearch}
+          placeholder="Search by run ID, status, or trigger…"
+          className="border-b border-slate-100 px-4 py-2"
+        />
+
+        {loadingJobs && jobs.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-slate-500">Loading runs…</p>
+        ) : jobs.length === 0 ? (
           <p className="px-4 py-10 text-center text-sm text-slate-500">
-            No runs yet. Click <strong>Run workflow</strong> to start.
+            {debouncedJobsSearch.trim()
+              ? "No runs match your search."
+              : "No runs yet. Click Run workflow to start."}
           </p>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              <tr>
-                <th className="px-4 py-2">Run ID</th>
-                <th className="px-4 py-2">Started</th>
-                <th className="px-4 py-2">Duration</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Triggered by</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {service.jobs.map((job) => (
-                <tr key={job.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-brand">
-                    <Link to={`/workflows/${databaseId}/runs/${job.id}`}>
-                      {runShortId(job.id)}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(job.createdAt).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {formatDuration(job)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={job.status} />
-                  </td>
-                  <td className="px-4 py-3 capitalize text-slate-600">
-                    {job.trigger}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      to={`/workflows/${databaseId}/runs/${job.id}`}
-                      className="text-slate-400 hover:text-brand"
-                    >
-                      <ChevronRight size={16} />
-                    </Link>
-                  </td>
+          <>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-4 py-2">Run ID</th>
+                  <th className="px-4 py-2">Started</th>
+                  <th className="px-4 py-2">Duration</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Triggered by</th>
+                  <th className="px-4 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {jobs.map((job) => (
+                  <tr key={job.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 font-mono text-brand">
+                      <Link to={`/workflows/${databaseId}/runs/${job.id}`}>
+                        {runShortId(job.id)}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {new Date(job.createdAt).toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {formatDuration(job)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={job.status} />
+                    </td>
+                    <td className="px-4 py-3 capitalize text-slate-600">
+                      {job.trigger}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        to={`/workflows/${databaseId}/runs/${job.id}`}
+                        className="text-slate-400 hover:text-brand"
+                      >
+                        <ChevronRight size={16} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {jobsPagination.total > 0 && (
+              <PaginationBar pagination={jobsPagination} onPageChange={setJobsPage} />
+            )}
+          </>
         )}
       </section>
     </AppShell>

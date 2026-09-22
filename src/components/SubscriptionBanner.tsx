@@ -2,9 +2,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Sparkles } from "lucide-react";
 import type { AuthUser } from "../types/api";
 import { getPlanDefinition, trialDaysRemaining } from "../lib/plans";
-
-const MARKETING_BILLING_URL =
-  import.meta.env.VITE_MARKETING_BILLING_URL?.trim() || "https://revenant.dev/pricing";
+import { site } from "../lib/site";
 
 export function SubscriptionBanner({ user }: { user: AuthUser }) {
   const plan = getPlanDefinition(user.organizationPlan);
@@ -31,7 +29,9 @@ export function SubscriptionBanner({ user }: { user: AuthUser }) {
           </div>
         </div>
         <a
-          href={MARKETING_BILLING_URL}
+          href={site.pricingUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className="shrink-0 rounded-md bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800"
         >
           Upgrade on website

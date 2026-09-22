@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { useAuth } from "./lib/auth";
+import { canAccessCloudDashboard } from "./lib/subscription-access";
+import { SubscriptionGate } from "./components/SubscriptionGate";
 import { api } from "./lib/api";
 import { LoginPage } from "./pages/LoginPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
@@ -19,10 +21,12 @@ import { SchedulesPage } from "./pages/SchedulesPage";
 import { EvidenceVaultPage } from "./pages/EvidenceVaultPage";
 import { WebhooksPage } from "./pages/WebhooksPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
+import { GeneralSettingsPage } from "./pages/GeneralSettingsPage";
+import { CredentialsPage } from "./pages/CredentialsPage";
 import { OAuthCompletePage } from "./pages/OAuthCompletePage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-600">
@@ -31,6 +35,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  if (!canAccessCloudDashboard(user)) {
+    return <SubscriptionGate user={user} onSignOut={() => void logout()} />;
+  }
   return children;
 }
 
@@ -124,6 +131,22 @@ export function App() {
         element={
           <ProtectedRoute>
             <LegacyJobRedirect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/general"
+        element={
+          <ProtectedRoute>
+            <GeneralSettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/credentials"
+        element={
+          <ProtectedRoute>
+            <CredentialsPage />
           </ProtectedRoute>
         }
       />

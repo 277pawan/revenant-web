@@ -28,6 +28,7 @@ export const MINUTE_OPTIONS = [0, 15, 30, 45];
 export const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
   { value: "UTC", label: "UTC — Coordinated Universal Time" },
   { value: "Asia/Kolkata", label: "Asia/Kolkata — India (IST)" },
+  { value: "Asia/Calcutta", label: "Asia/Calcutta — India (IST)" },
   { value: "Asia/Dubai", label: "Asia/Dubai — UAE (GST)" },
   { value: "Asia/Singapore", label: "Asia/Singapore — Singapore (SGT)" },
   { value: "Asia/Tokyo", label: "Asia/Tokyo — Japan (JST)" },
@@ -83,6 +84,65 @@ export function formatTime12h(hour: number, minute: number): string {
   const h = hour % 12 === 0 ? 12 : hour % 12;
   const ampm = hour < 12 ? "AM" : "PM";
   return `${h}:${pad2(minute)} ${ampm}`;
+}
+
+export function formatTime24hValue(hour: number, minute: number): string {
+  return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+export function parseTime24hValue(value: string): { hour: number; minute: number } | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute) ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+  return { hour, minute };
+}
+
+export function parseCronExpression(cronExpression: string): {
+  frequency: ScheduleFrequency;
+  hour: number;
+  minute: number;
+  dayOfWeek: number;
+  dayOfMonth: number;
+} | null {
+  const parts = cronExpression.trim().split(/\s+/);
+  if (parts.length < 5) return null;
+
+  const minute = Number(parts[0]);
+  const hour = Number(parts[1]);
+  const dom = parts[2];
+  const month = parts[3];
+  const dow = parts[4];
+
+  if (Number.isNaN(minute) || Number.isNaN(hour)) return null;
+
+  if (dom === "*" && month === "*" && dow === "*") {
+    return { frequency: "daily", hour, minute, dayOfWeek: 1, dayOfMonth: 1 };
+  }
+
+  if (dom === "*" && month === "*" && dow !== "*") {
+    const dayOfWeek = Number(dow);
+    if (Number.isNaN(dayOfWeek)) return null;
+    return { frequency: "weekly", hour, minute, dayOfWeek, dayOfMonth: 1 };
+  }
+
+  if (dom !== "*" && month === "*" && dow === "*") {
+    const dayOfMonth = Number(dom);
+    if (Number.isNaN(dayOfMonth)) return null;
+    return { frequency: "monthly", hour, minute, dayOfWeek: 1, dayOfMonth };
+  }
+
+  return null;
 }
 
 export function describeCronExpression(

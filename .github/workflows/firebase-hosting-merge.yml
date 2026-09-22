@@ -18,7 +18,8 @@ jobs:
       - run: npm ci && npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_SITE_URL: https://revenant-cloud.web.app
+          VITE_SITE_URL: https://revenant-cloud-web.web.app
+          VITE_MARKETING_URL: https://revenant-verify-933e4.web.app
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}

@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { OAUTH_MESSAGE_TYPE } from "../lib/oauth-popup";
+import { api } from "../lib/api";
+import { canAccessCloudDashboard } from "../lib/subscription-access";
+import { site } from "../lib/site";
 
 export function OAuthCompletePage() {
   const navigate = useNavigate();
@@ -48,8 +51,22 @@ export function OAuthCompletePage() {
       return;
     }
 
-    setMessage("Signed in — opening dashboard…");
-    navigate("/", { replace: true });
+    void (async () => {
+      try {
+        const { user } = await api.me();
+        if (!canAccessCloudDashboard(user)) {
+          setMessage("Starter trial required — redirecting…");
+          window.location.href = `${site.marketingUrl}/trial-ended`;
+          return;
+        }
+        setMessage("Signed in — opening dashboard…");
+        navigate("/", { replace: true });
+      } catch {
+        navigate(`/login?oauth_error=${encodeURIComponent("Sign-in failed")}`, {
+          replace: true,
+        });
+      }
+    })();
   }, [navigate, searchParams]);
 
   return (

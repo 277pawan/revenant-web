@@ -11,6 +11,7 @@ type ConfirmDialogProps = {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: React.ReactNode;
 };
 
 export function ConfirmDialog({
@@ -23,6 +24,7 @@ export function ConfirmDialog({
   loading = false,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmDialogProps) {
   useEffect(() => {
     if (!open) return;
@@ -63,6 +65,7 @@ export function ConfirmDialog({
           </button>
         </div>
         <p className="text-sm text-slate-600">{description}</p>
+        {children ? <div className="mt-4">{children}</div> : null}
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"

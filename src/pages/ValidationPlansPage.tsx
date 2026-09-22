@@ -91,6 +91,12 @@ export function ValidationPlansPage() {
   const [leftPanel, setLeftPanel] = useState<LeftPanel>("plans");
   const [composerStatus, setComposerStatus] = useState<YamlComposerStatus | null>(null);
   const [templates, setTemplates] = useState<ValidationPlanTemplateResource[]>([]);
+  const [savedPlanVersion, setSavedPlanVersion] = useState<number | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<{
+    databaseId: string;
+    name: string;
+    yamlText: string;
+  } | null>(null);
   const initialDbLoaded = useRef(false);
 
   function toggleLeftPanel(panel: LeftPanel) {
@@ -147,36 +153,37 @@ export function ValidationPlansPage() {
     async (databaseId: string, db?: DatabaseResource | null) => {
       setLoadingPlan(true);
       try {
-        const cached = plans.find((p) => p.databaseId === databaseId);
-        if (cached) {
-          reset({
-            databaseId,
-            name: cached.name,
-            yamlText: cached.yamlText,
-          });
-          return;
-        }
-        if (db?.hasValidationPlan) {
+        const mayExist =
+          db?.hasValidationPlan ?? plans.some((p) => p.databaseId === databaseId);
+        if (mayExist) {
           const res = await api.getValidationPlan(databaseId);
-          reset({
+          const values = {
             databaseId,
             name: res.plan.name,
             yamlText: res.plan.yamlText,
-          });
-          toast.success("Plan loaded", `${db.name} · v${res.plan.version}`);
+          };
+          reset(values);
+          setSavedSnapshot(values);
+          setSavedPlanVersion(res.plan.version);
           return;
         }
-        reset({
+        const values = {
           databaseId,
           name: "default",
           yamlText: DEFAULT_YAML,
-        });
+        };
+        reset(values);
+        setSavedSnapshot(values);
+        setSavedPlanVersion(null);
       } catch (err) {
-        reset({
+        const values = {
           databaseId,
           name: "default",
           yamlText: DEFAULT_YAML,
-        });
+        };
+        reset(values);
+        setSavedSnapshot(values);
+        setSavedPlanVersion(null);
         if (db && !db.hasValidationPlan) return;
         toast.error(
           "Could not load plan",
@@ -188,6 +195,12 @@ export function ValidationPlansPage() {
     },
     [plans, reset, toast]
   );
+
+  const isDirty =
+    savedSnapshot != null &&
+    (savedSnapshot.databaseId !== selectedDatabaseId ||
+      savedSnapshot.name !== (planName ?? "") ||
+      savedSnapshot.yamlText !== (yamlText ?? ""));
 
   useEffect(() => {
     void api
@@ -228,13 +241,22 @@ export function ValidationPlansPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.upsertValidationPlan(values.databaseId, {
+      const { plan } = await api.upsertValidationPlan(values.databaseId, {
         name: values.name,
         yamlText: values.yamlText,
       });
       setSearchParams({ databaseId: values.databaseId });
+      setSavedSnapshot({
+        databaseId: values.databaseId,
+        name: values.name,
+        yamlText: values.yamlText,
+      });
+      setSavedPlanVersion(plan.version);
       await loadPlans(page, debouncedSearch);
-      toast.success("Plan saved", `Validation plan for ${values.name} updated.`);
+      toast.success(
+        "Plan saved",
+        `v${plan.version} — workflow runs will use this YAML on the next drill.`
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save plan";
       setError(message);
@@ -264,7 +286,10 @@ export function ValidationPlansPage() {
     try {
       const { template } = await api.getValidationPlanTemplate(templateId);
       setValue("yamlText", template.yamlText, { shouldValidate: true });
-      toast.success("Template imported", template.name);
+      toast.success(
+        "Template loaded in editor",
+        `${template.name} — click Save plan to apply to workflow runs.`
+      );
     } catch (err) {
       toast.error(
         "Import failed",
@@ -457,8 +482,18 @@ export function ValidationPlansPage() {
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-slate-900">Plan editor</h2>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Validation checks run against your target database on each proof workflow.
+                  These checks run on each drill. Importing a template only updates the editor
+                  until you save.
                 </p>
+                {savedPlanVersion != null && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Saved version:{" "}
+                    <span className="font-medium text-slate-700">v{savedPlanVersion}</span>
+                    {isDirty && (
+                      <span className="ml-2 font-medium text-amber-700">· unsaved changes</span>
+                    )}
+                  </p>
+                )}
               </div>
               {canWrite && (
                 <button
@@ -467,7 +502,7 @@ export function ValidationPlansPage() {
                   className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
                   <Save size={15} />
-                  {saving ? "Saving…" : "Save plan"}
+                  {saving ? "Saving…" : isDirty ? "Save plan" : "Saved"}
                 </button>
               )}
             </div>

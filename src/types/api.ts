@@ -76,7 +76,7 @@ export interface Paginated<T> {
 
 export type OrganizationPlan = "starter" | "pro" | "enterprise";
 
-export type OAuthProviderId = "google" | "github";
+export type OAuthProviderId = "google" | "github" | "microsoft";
 export type AuthProviderStatus = "live" | "coming_soon" | "disabled";
 
 export interface AuthProviderInfo {
@@ -150,6 +150,41 @@ export interface DashboardRtoTrendPoint {
 
 export interface DashboardRtoTrend {
   days: DashboardRtoTrendPoint[];
+}
+
+export interface DashboardRpoTrendPoint {
+  date: string;
+  maxRpoSeconds: number | null;
+  sampleCount: number;
+}
+
+export interface DashboardRpoTrend {
+  days: DashboardRpoTrendPoint[];
+}
+
+export type RecoveryChallengeStrategy = "latest" | "days_ago";
+
+export interface RecoveryChallengeResource {
+  id: string;
+  databaseId: string;
+  name: string;
+  strategy: RecoveryChallengeStrategy;
+  daysAgo: number;
+  enabled: boolean;
+  lastRunAt: string | null;
+  lastJobId: string | null;
+  lastStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReadinessHistoryPoint {
+  recordedAt: string;
+  score: number;
+  status: string;
+  rtoActualSeconds: number | null;
+  rpoObservedSeconds: number | null;
+  jobId: string;
 }
 
 export interface ValidationPlanTemplateResource {
@@ -357,6 +392,8 @@ export interface PlanServiceResource {
   databaseId: string;
   databaseName: string;
   planName: string;
+  planVersion: number;
+  planUpdatedAt: string;
   recoveryMode: RecoveryMode | string;
   runner: PlanServiceRunner | null;
   jobs: JobResource[];
@@ -483,5 +520,173 @@ export interface AuditEventResource {
   resourceId: string;
   metadata: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export type ReadinessDimensionStatus =
+  | "pass"
+  | "fail"
+  | "warn"
+  | "unknown"
+  | "not_configured";
+
+export type ReadinessOverallStatus =
+  | "recovery_ready"
+  | "at_risk"
+  | "not_ready"
+  | "unknown";
+
+export interface ReadinessDimension {
+  id: string;
+  label: string;
+  status: ReadinessDimensionStatus;
+  detail?: string;
+  weight: number;
+}
+
+export interface RecoveryRisk {
+  severity: "warning" | "critical";
+  message: string;
+}
+
+export interface RecoveryReadinessResult {
+  score: number;
+  status: ReadinessOverallStatus;
+  dimensions: ReadinessDimension[];
+  risks: RecoveryRisk[];
+  rtoTargetSeconds: number | null;
+  rtoActualSeconds: number | null;
+  rpoTargetSeconds: number | null;
+  rpoObservedSeconds: number | null;
+  lastVerifiedAt: string | null;
+  driftStatus: string;
+  driftSummary: string | null;
+}
+
+export interface RecoveryProviderDefinition {
+  id: string;
+  label: string;
+  role: "restore" | "dependency" | "application";
+  status: "available" | "planned" | "beta";
+  checkTypes: string[];
+}
+
+export interface RecoveryReadinessResource {
+  databaseId: string;
+  databaseName: string;
+  contractVersion: number;
+  readiness: RecoveryReadinessResult;
+  providers: RecoveryProviderDefinition[];
+}
+
+export interface RecoveryContractDefinition {
+  version: string;
+  recovery: {
+    rto: string;
+    rpo: string;
+    required: {
+      database?: boolean;
+      schema?: boolean;
+      critical_queries?: boolean;
+      api?: boolean;
+      healthcheck?: boolean;
+    };
+    application?: {
+      healthcheck?: string;
+    };
+    dependencies?: string[];
+    max_verification_age_hours?: number;
+  };
+}
+
+export interface RecoveryContractResource {
+  id: string;
+  databaseId: string;
+  databaseName: string;
+  version: number;
+  definition: RecoveryContractDefinition;
+  yamlText: string;
+  rtoSeconds: number | null;
+  rpoSeconds: number | null;
+  status: string;
+  contractHash: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriftEventResource {
+  id: string;
+  severity: string;
+  changeType: string;
+  description: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface OrganizationSettingsResource {
+  id: string;
+  name: string;
+  plan: OrganizationPlan;
+  subscriptionStatus: SubscriptionStatus;
+  trialEndsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateOrganizationRequest {
+  name: string;
+}
+
+export interface ApiTokenResource {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  role: UserRole;
+  createdByEmail: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateApiTokenRequest {
+  name: string;
+  role: UserRole;
+}
+
+export interface CreateApiTokenResponse {
+  token: ApiTokenResource;
+  secret: string;
+}
+
+export interface OrgSubscriptionSummary {
+  plan: OrganizationPlan;
+  planName: string;
+  priceInr: number | null;
+  priceLabel: string;
+  subscriptionStatus: SubscriptionStatus;
+  subscriptionActive: boolean;
+  trialEndsAt: string | null;
+  trialDaysRemaining: number | null;
+  limits: {
+    workflows: number;
+    schedules: number;
+    teamMembers: number;
+    integrations: number;
+    parallelDrills: number;
+    managedCloudDrills: boolean;
+    selfHostedAgent: boolean;
+    directPostgresDrills: boolean;
+  };
+  usage: {
+    workflows: number;
+    schedules: number;
+    teamMembers: number;
+    integrations: number;
+    activeRestoreDrills: number;
+  };
+  features: {
+    managedCloudDrills: boolean;
+    selfHostedAgent: boolean;
+    directPostgres: boolean;
+  };
 }
 
