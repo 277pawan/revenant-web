@@ -17,7 +17,7 @@ export const PLAN_DEFINITIONS: Record<OrganizationPlan, PlanDefinition> = {
   starter: {
     id: "starter",
     name: "Starter",
-    priceLabel: "₹999 / month",
+    priceLabel: "₹499 / month",
     tagline: "One production workflow — we run the restore drill for you.",
     trialDays: 30,
     selfHostedAgent: false,
@@ -33,7 +33,7 @@ export const PLAN_DEFINITIONS: Record<OrganizationPlan, PlanDefinition> = {
   pro: {
     id: "pro",
     name: "Pro",
-    priceLabel: "₹4,999 / month",
+    priceLabel: "₹1,499 / month",
     tagline: "Fleet DR proof — Revenant still runs AWS drills for you.",
     trialDays: null,
     selfHostedAgent: true,

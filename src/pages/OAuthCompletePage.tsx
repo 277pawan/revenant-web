@@ -3,8 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { OAUTH_MESSAGE_TYPE } from "../lib/oauth-popup";
 import { api } from "../lib/api";
-import { canAccessCloudDashboard } from "../lib/subscription-access";
-import { site } from "../lib/site";
+import { canAccessCloudDashboard, websiteBillingUrl } from "../lib/subscription-access";
 
 export function OAuthCompletePage() {
   const navigate = useNavigate();
@@ -55,8 +54,8 @@ export function OAuthCompletePage() {
       try {
         const { user } = await api.me();
         if (!canAccessCloudDashboard(user)) {
-          setMessage("Starter trial required — redirecting…");
-          window.location.href = `${site.marketingUrl}/trial-ended`;
+          setMessage("Complete billing on the website…");
+          window.location.href = websiteBillingUrl(token);
           return;
         }
         setMessage("Signed in — opening dashboard…");

@@ -1,41 +1,43 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, Sparkles } from "lucide-react";
+import { AlertTriangle, ExternalLink, Sparkles } from "lucide-react";
 import type { AuthUser } from "../types/api";
 import { getPlanDefinition, trialDaysRemaining } from "../lib/plans";
-import { site } from "../lib/site";
+import { redirectToWebsiteBilling } from "../lib/subscription-access";
 
 export function SubscriptionBanner({ user }: { user: AuthUser }) {
   const plan = getPlanDefinition(user.organizationPlan);
   const daysLeft = trialDaysRemaining(user.trialEndsAt);
   const trialing = user.subscriptionStatus === "trialing";
-  const active = user.subscriptionActive !== false;
 
-  if (active && !trialing) return null;
+  if (user.autopaySetup && !trialing) return null;
 
-  if (!active) {
+  if (!user.autopaySetup) {
     return (
       <div
-        className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+        className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
         role="status"
       >
         <div className="flex items-start gap-2">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-600" />
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
           <div>
-            <p className="font-medium">Trial ended — cloud drills are paused</p>
-            <p className="mt-0.5 text-red-800">
-              Upgrade to {plan.name} ({plan.priceLabel}) to keep managed AWS restore drills. Developer
-              CLI + GitHub Action stay free forever.
+            <p className="font-medium">Autopay setup required</p>
+            <p className="mt-0.5 text-amber-900">
+              Complete the ₹1 card check on the marketing site to use the cloud dashboard.
             </p>
           </div>
         </div>
-        <a
-          href={site.pricingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 rounded-md bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-800"
-        >
-          Upgrade on website
-        </a>
+        {user.role === "admin" ? (
+          <button
+            type="button"
+            onClick={() => redirectToWebsiteBilling()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800"
+          >
+            <ExternalLink size={14} />
+            Go to billing
+          </button>
+        ) : (
+          <span className="text-xs text-amber-800">Ask an admin to complete billing</span>
+        )}
       </div>
     );
   }
@@ -53,8 +55,7 @@ export function SubscriptionBanner({ user }: { user: AuthUser }) {
               {plan.name} trial · {daysLeft} day{daysLeft === 1 ? "" : "s"} left
             </p>
             <p className="mt-0.5 text-blue-800">
-              No card required yet. After 30 days, subscribe on the website (Razorpay) or use the free
-              Developer CLI in your own pipeline.
+              Recurring billing is active. {plan.priceLabel} charges automatically when your trial ends.
             </p>
           </div>
         </div>

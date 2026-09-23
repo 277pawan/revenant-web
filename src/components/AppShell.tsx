@@ -17,6 +17,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import { RevenantMark } from "./auth/RevenantMark";
+import { TrialStatusBar } from "./TrialStatusBar";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition, planAllowsSelfHostedAgent } from "../lib/plans";
 import { site } from "../lib/site";
@@ -232,7 +233,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="ml-56 min-h-screen min-w-0">
-        <div className="mx-auto w-full max-w-[1400px] p-6 lg:p-8">{children}</div>
+        <div className="mx-auto w-full max-w-[1400px] p-6 lg:p-8">
+          <TrialStatusBar />
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition } from "../lib/plans";
 import { site } from "../lib/site";
+import { redirectToWebsiteBilling } from "../lib/subscription-access";
 import {
   roleHasPermission,
   type OrganizationSettingsResource,
@@ -153,15 +154,37 @@ export function GeneralSettingsPage() {
                   {subscription?.usage.workflows ?? 0} / {subscription?.limits.workflows ?? "—"}
                 </dd>
               </div>
+              {subscription?.autopaySetup && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Autopay</dt>
+                  <dd className="font-medium text-emerald-700">
+                    Active
+                    {subscription.razorpaySubscriptionStatus
+                      ? ` · ${subscription.razorpaySubscriptionStatus}`
+                      : " (₹1 setup complete)"}
+                  </dd>
+                </div>
+              )}
             </dl>
-            <a
-              href={site.marketingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-block text-sm font-medium text-brand hover:underline"
-            >
-              Manage subscription on website →
-            </a>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {user?.role === "admin" && subscription && !subscription.autopaySetup && (
+                <button
+                  type="button"
+                  onClick={() => redirectToWebsiteBilling()}
+                  className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  Set up autopay on website — ₹1
+                </button>
+              )}
+              <a
+                href={site.pricingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-brand hover:underline"
+              >
+                View pricing →
+              </a>
+            </div>
           </section>
         </div>
       )}

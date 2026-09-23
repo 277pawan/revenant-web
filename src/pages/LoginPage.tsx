@@ -11,7 +11,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { getPlanDefinition } from "../lib/plans";
 import { site } from "../lib/site";
-import { canAccessCloudDashboard } from "../lib/subscription-access";
+import { canAccessCloudDashboard, redirectToWebsiteBilling } from "../lib/subscription-access";
 import { SubscriptionGate } from "../components/SubscriptionGate";
 import type {
   AuthProviderInfo,
@@ -151,10 +151,10 @@ export function LoginPage() {
         signedInUser = await login({ email, password });
         if (!canAccessCloudDashboard(signedInUser)) {
           toast.info(
-            "Starter trial required",
-            "Start or renew Starter on the marketing site to use the cloud dashboard.",
+            "Billing required",
+            "Complete ₹1 autopay setup on the marketing site first.",
           );
-          setLoading(false);
+          redirectToWebsiteBilling();
           return;
         }
         setSuccessMessage("Welcome back — loading your fleet posture…");

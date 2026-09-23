@@ -508,4 +508,21 @@ export const api = {
     return request("/api/v1/billing/subscription");
   },
 
+  createBillingOrder(): Promise<{ order: import("../types/api").BillingCreateOrderResponse }> {
+    return request("/api/v1/billing/create-order", { method: "POST", body: JSON.stringify({}) });
+  },
+
+  verifyBillingPayment(
+    body: import("../types/api").BillingVerifyPaymentRequest
+  ): Promise<{
+    ok: true;
+    autopaySetup: boolean;
+    subscription: import("../types/api").OrgSubscriptionSummary;
+  }> {
+    return request("/api/v1/billing/verify-payment", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
 };

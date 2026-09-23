@@ -39,6 +39,26 @@ Revenant is split across several repos that work together:
 
 ---
 
+## Billing & access flow
+
+1. **Register / sign in on the marketing site** (`revenant-website`) — not the cloud login for new orgs.
+2. **Pay ₹1 on `/billing`** — Razorpay autopay setup (same JWT stored as `revenant_token`).
+3. **Open cloud dashboard** — token is passed via `#token=` to `/auth/oauth/complete`; same session on both apps.
+
+If cloud shows “Complete billing on revenant.dev”, the org has not finished ₹1 autopay setup yet.
+
+### API migrations (required for billing)
+
+After pulling API changes, from **`revenant-cloud`** (not this repo):
+
+```bash
+npm run db:migrate
+```
+
+If `create-order` returns 500 / `MIGRATION_REQUIRED`, the `billing_orders` table is missing — see [revenant-cloud README](../revenant-cloud/README.md#migrations--do-this-after-every-pull-fixes-500-on-billing--new-features).
+
+---
+
 ## What this dashboard does
 
 After sign-in, operators manage **restore proof** for PostgreSQL / AWS RDS fleets:

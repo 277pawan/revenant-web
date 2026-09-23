@@ -1,8 +1,20 @@
 import type { AuthUser } from "../types/api";
+import { site } from "./site";
 
-/** Cloud dashboard + managed drills require active Starter (or paid) subscription. */
+/** Cloud dashboard requires ₹1 autopay setup on the marketing site. */
 export function canAccessCloudDashboard(
-  user: Pick<AuthUser, "subscriptionActive"> | null | undefined
+  user: Pick<AuthUser, "autopaySetup"> | null | undefined
 ): boolean {
-  return user?.subscriptionActive === true;
+  return user?.autopaySetup === true;
+}
+
+export function websiteBillingUrl(token?: string | null): string {
+  const base = `${site.marketingUrl}/billing`;
+  if (!token) return base;
+  return `${base}#token=${encodeURIComponent(token)}`;
+}
+
+export function redirectToWebsiteBilling(): void {
+  const token = localStorage.getItem("revenant_token");
+  window.location.href = websiteBillingUrl(token);
 }

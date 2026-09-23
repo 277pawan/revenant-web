@@ -111,6 +111,7 @@ export interface AuthUser {
   subscriptionStatus?: SubscriptionStatus;
   trialEndsAt?: string | null;
   subscriptionActive?: boolean;
+  autopaySetup?: boolean;
 }
 
 export type FleetHealthStatus = "healthy" | "warning" | "critical" | "unknown";
@@ -657,6 +658,22 @@ export interface CreateApiTokenResponse {
   secret: string;
 }
 
+export interface BillingCreateOrderResponse {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
+  description: string;
+  plan: "starter";
+  purpose: "autopay_setup";
+}
+
+export interface BillingVerifyPaymentRequest {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
 export interface OrgSubscriptionSummary {
   plan: OrganizationPlan;
   planName: string;
@@ -666,6 +683,10 @@ export interface OrgSubscriptionSummary {
   subscriptionActive: boolean;
   trialEndsAt: string | null;
   trialDaysRemaining: number | null;
+  autopaySetup: boolean;
+  razorpayConfigured: boolean;
+  razorpaySubscriptionId?: string | null;
+  razorpaySubscriptionStatus?: string | null;
   limits: {
     workflows: number;
     schedules: number;
