@@ -141,6 +141,7 @@ export interface DashboardOnboardingStep {
   label: string;
   done: boolean;
   href: string;
+  docsHref?: string | null;
 }
 
 export interface DashboardRtoTrendPoint {
@@ -283,6 +284,7 @@ export interface CreateDatabaseRequest {
   recoverySandboxInstanceClass?: string;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
+  awsSessionToken?: string;
   description?: string;
 }
 
@@ -302,6 +304,7 @@ export interface UpdateDatabaseRequest {
   recoverySandboxInstanceClass?: string | null;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
+  awsSessionToken?: string;
   description?: string | null;
 }
 
@@ -487,7 +490,12 @@ export interface EvidenceArtifactResource {
 
 export type WebhookProvider = "slack" | "email" | "http";
 
-export type WebhookEventType = "job.pass" | "job.fail" | "job.error";
+export type WebhookEventType =
+  | "job.pass"
+  | "job.fail"
+  | "job.error"
+  | "contract.breach"
+  | "contract.regression";
 
 export interface WebhookEndpointResource {
   id: string;
@@ -549,6 +557,35 @@ export interface RecoveryRisk {
   message: string;
 }
 
+export type RegressionSeverity = "none" | "warning" | "critical";
+
+export interface RecoveryRegressionMetricDelta {
+  previous: number;
+  current: number;
+  deltaSeconds: number;
+  deltaPercent: number;
+}
+
+export interface RecoveryRegressionInfo {
+  detected: boolean;
+  severity: RegressionSeverity;
+  message: string | null;
+  rto?: RecoveryRegressionMetricDelta;
+  rpo?: RecoveryRegressionMetricDelta;
+  score?: { previous: number; current: number; delta: number };
+  comparedJobId?: string;
+  comparedAt?: string;
+}
+
+export interface RecoveryGateResult {
+  allowed: boolean;
+  status: ReadinessOverallStatus;
+  score: number;
+  minScore: number;
+  blockers: string[];
+  checkedAt: string;
+}
+
 export interface RecoveryReadinessResult {
   score: number;
   status: ReadinessOverallStatus;
@@ -559,8 +596,11 @@ export interface RecoveryReadinessResult {
   rpoTargetSeconds: number | null;
   rpoObservedSeconds: number | null;
   lastVerifiedAt: string | null;
+  latestDrillStatus: string | null;
+  latestDrillAt: string | null;
   driftStatus: string;
   driftSummary: string | null;
+  regression: RecoveryRegressionInfo | null;
 }
 
 export interface RecoveryProviderDefinition {
@@ -571,11 +611,67 @@ export interface RecoveryProviderDefinition {
   checkTypes: string[];
 }
 
+export type SnapshotOrigin = "customer_existing" | "revenant_managed" | "unknown";
+
+export interface RecoveryPointResource {
+  id: string;
+  databaseId: string;
+  databaseName: string;
+  provider: string;
+  region: string | null;
+  sourceDbIdentifier: string | null;
+  snapshotIdentifier: string;
+  snapshotArn: string | null;
+  engine: string | null;
+  engineVersion: string | null;
+  snapshotCreatedAt: string | null;
+  snapshotOrigin: SnapshotOrigin;
+  status: string;
+  lastVerifiedAt: string | null;
+  lastVerificationStatus: "verified" | "failed" | "never";
+  lastVerificationJobId: string | null;
+  lastCleanupStatus: string | null;
+  lastTemporaryInstanceIdentifier: string | null;
+  lastRtoSeconds: number | null;
+  lastRpoObservedSeconds: number | null;
+  validationPlanVersion: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecoveryInstanceResource {
+  id: string;
+  recoveryRunId: string;
+  awsDbInstanceIdentifier: string;
+  endpoint: string | null;
+  port: number | null;
+  region: string | null;
+  instanceClass: string | null;
+  temporary: boolean;
+  status: string;
+  createdAt: string;
+  deletedAt: string | null;
+}
+
+export interface RecoveryVerifiedPoint {
+  jobId: string;
+  verifiedAt: string;
+  score: number;
+  status: string;
+  rtoSeconds: number | null;
+  rpoObservedSeconds: number | null;
+  recoveryPointLabel: string;
+  trigger: string;
+  checksPassed: number;
+  checksTotal: number;
+}
+
 export interface RecoveryReadinessResource {
   databaseId: string;
   databaseName: string;
   contractVersion: number;
   readiness: RecoveryReadinessResult;
+  lastVerifiedRecoveryPoint: RecoveryVerifiedPoint | null;
   providers: RecoveryProviderDefinition[];
 }
 
@@ -593,6 +689,12 @@ export interface RecoveryContractDefinition {
     };
     application?: {
       healthcheck?: string;
+      endpoints?: Array<{
+        name: string;
+        method: string;
+        path: string;
+        expect_status?: number;
+      }>;
     };
     dependencies?: string[];
     max_verification_age_hours?: number;

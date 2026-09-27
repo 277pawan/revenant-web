@@ -2,15 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Building2 } from "lucide-react";
+import { Building2, ChevronRight, CreditCard } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { RbacMatrixCard } from "../components/settings/RbacMatrixCard";
 import { Field, Input } from "../components/ui/Field";
 import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition } from "../lib/plans";
-import { site } from "../lib/site";
-import { redirectToWebsiteBilling } from "../lib/subscription-access";
 import {
   roleHasPermission,
   type OrganizationSettingsResource,
@@ -82,13 +82,11 @@ export function GeneralSettingsPage() {
     }
   }
 
-  const plan = getPlanDefinition(organization?.plan ?? user?.organizationPlan ?? "starter");
-
   return (
     <AppShell>
       <div className="mb-4">
         <h1 className="text-xl font-semibold text-slate-900">General</h1>
-        <p className="text-sm text-slate-500">Organization profile and subscription.</p>
+        <p className="text-sm text-slate-500">Organization profile and identity.</p>
       </div>
 
       {error && (
@@ -126,68 +124,28 @@ export function GeneralSettingsPage() {
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 font-semibold text-slate-900">Plan & billing</h2>
-            <dl className="space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Current plan</dt>
-                <dd className="font-medium text-slate-900">{plan.name}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Price</dt>
-                <dd className="text-slate-900">{subscription?.priceLabel ?? plan.priceLabel}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Subscription</dt>
-                <dd className="capitalize text-slate-900">
-                  {subscription?.subscriptionStatus ?? organization?.subscriptionStatus}
-                </dd>
-              </div>
-              {subscription?.trialDaysRemaining != null && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Trial</dt>
-                  <dd className="text-slate-900">{subscription.trialDaysRemaining} days left</dd>
-                </div>
-              )}
-              <div className="flex justify-between gap-4">
-                <dt className="text-slate-500">Workflows</dt>
-                <dd className="text-slate-900">
-                  {subscription?.usage.workflows ?? 0} / {subscription?.limits.workflows ?? "—"}
-                </dd>
-              </div>
-              {subscription?.autopaySetup && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-slate-500">Autopay</dt>
-                  <dd className="font-medium text-emerald-700">
-                    Active
-                    {subscription.razorpaySubscriptionStatus
-                      ? ` · ${subscription.razorpaySubscriptionStatus}`
-                      : " (₹1 setup complete)"}
-                  </dd>
-                </div>
-              )}
-            </dl>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              {user?.role === "admin" && subscription && !subscription.autopaySetup && (
-                <button
-                  type="button"
-                  onClick={() => redirectToWebsiteBilling()}
-                  className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  Set up autopay on website — ₹1
-                </button>
-              )}
-              <a
-                href={site.pricingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-medium text-brand hover:underline"
-              >
-                View pricing →
-              </a>
+            <div className="mb-4 flex items-center gap-2">
+              <CreditCard size={18} className="text-slate-500" />
+              <h2 className="font-semibold text-slate-900">Plan & billing</h2>
             </div>
+            <p className="text-sm text-slate-600">
+              {getPlanDefinition(organization?.plan ?? subscription?.plan ?? "starter").name} plan
+              {subscription?.subscriptionStatus
+                ? ` · ${subscription.subscriptionStatus.replace("_", " ")}`
+                : ""}
+            </p>
+            <Link
+              to="/settings/billing"
+              className="mt-4 inline-flex w-full items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 hover:bg-slate-100"
+            >
+              Manage plan, trial, and payment
+              <ChevronRight size={16} className="text-slate-400" />
+            </Link>
           </section>
         </div>
       )}
+
+      {!loading && <div className="mt-6"><RbacMatrixCard /></div>}
     </AppShell>
   );
 }

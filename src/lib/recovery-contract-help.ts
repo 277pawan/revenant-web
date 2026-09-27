@@ -10,7 +10,16 @@ recovery:
     healthcheck: true   # set true to require application health
     api: false
   application:
-    healthcheck: https://api.example.com/health
+    healthcheck: https://api.example.com
+    endpoints:
+      - name: health
+        method: GET
+        path: /health
+        expect_status: 200
+      - name: readiness
+        method: GET
+        path: /ready
+        expect_status: 200
   dependencies: []
   max_verification_age_hours: 168
 `;

@@ -98,6 +98,7 @@ export function ValidationPlansPage() {
     yamlText: string;
   } | null>(null);
   const initialDbLoaded = useRef(false);
+  const templateImported = useRef(false);
 
   function toggleLeftPanel(panel: LeftPanel) {
     setLeftPanel((current) => (current === panel ? current : panel));
@@ -297,6 +298,15 @@ export function ValidationPlansPage() {
       );
     }
   }
+
+  useEffect(() => {
+    if (templateImported.current) return;
+    const templateId = searchParams.get("template");
+    if (!templateId || templates.length === 0) return;
+    if (!templates.some((t) => t.id === templateId)) return;
+    templateImported.current = true;
+    void importTemplate(templateId);
+  }, [searchParams, templates]);
 
   function onFormat() {
     setFormatError(null);

@@ -1,8 +1,9 @@
+import { Link } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition, trialDaysRemaining } from "../lib/plans";
 
-/** Visible on every cloud page while the org is in Starter trial. */
+/** Visible on every cloud page while the org is in trial. */
 export function TrialStatusBar() {
   const { user } = useAuth();
   if (!user) return null;
@@ -30,10 +31,16 @@ export function TrialStatusBar() {
         </span>
         <span className="hidden text-xs opacity-80 sm:inline">
           {user.autopaySetup
-            ? `· ${plan.priceLabel} starts after trial`
+            ? `· ${plan.priceLabel} after trial`
             : "· Complete autopay on the marketing site"}
         </span>
       </div>
+      <Link
+        to="/settings/billing"
+        className="shrink-0 rounded-md border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-semibold hover:bg-white"
+      >
+        Plan & billing
+      </Link>
     </div>
   );
 }

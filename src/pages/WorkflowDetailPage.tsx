@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ChevronRight, MoreVertical, Play, RefreshCw } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { ChevronRight, RefreshCw } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { PaginationBar } from "../components/PaginationBar";
 import { RecoveryChallengesPanel } from "../components/RecoveryChallengesPanel";
@@ -8,10 +8,21 @@ import { RecoveryContractPanel } from "../components/RecoveryContractPanel";
 import { RecoveryDriftPanel } from "../components/RecoveryDriftPanel";
 import { RecoveryReadinessCard } from "../components/RecoveryReadinessCard";
 import { ReadinessTrendChart } from "../components/ReadinessTrendChart";
+import { DependencyGraphPanel } from "../components/workflow/DependencyGraphPanel";
+import { RecoveryCostHint } from "../components/workflow/RecoveryCostHint";
+import { RecoveryGatePanel } from "../components/workflow/RecoveryGatePanel";
+import { RecoveryPointsPanel } from "../components/workflow/RecoveryPointsPanel";
+import { QueuedDrillBanner } from "../components/workflow/QueuedDrillBanner";
+import { WorkflowCommandCenter } from "../components/workflow/WorkflowCommandCenter";
+import {
+  WorkflowDetailTabs,
+  WorkflowTabPanel,
+  type WorkflowTabId,
+} from "../components/workflow/WorkflowDetailTabs";
+import { StatusBadge } from "../components/workflow/StatusBadge";
 import { WorkflowExecutionInfo } from "../components/WorkflowExecutionInfo";
 import { TableSearchBar } from "../components/TableSearchBar";
 import { useToast } from "../components/toast/ToastProvider";
-import { StatusBadge } from "../components/workflow/StatusBadge";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -33,11 +44,41 @@ import {
 
 const JOBS_PAGE_SIZE = 10;
 
+const VALID_TABS: WorkflowTabId[] = [
+  "overview",
+  "recovery-points",
+  "analysis",
+  "contract",
+  "history",
+];
+
+function parseTab(value: string | null): WorkflowTabId {
+  if (value && VALID_TABS.includes(value as WorkflowTabId)) {
+    return value as WorkflowTabId;
+  }
+  return "overview";
+}
+
 export function WorkflowDetailPage() {
   const { databaseId } = useParams<{ databaseId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = parseTab(searchParams.get("tab"));
   const { user } = useAuth();
   const toast = useToast();
+
+  function setActiveTab(tab: WorkflowTabId) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (tab === "overview") next.delete("tab");
+        else next.set("tab", tab);
+        return next;
+      },
+      { replace: true }
+    );
+  }
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
+  const canDownload = user ? roleHasPermission(user.role, "evidence:read") : false;
 
   const [service, setService] = useState<PlanServiceResource | null>(null);
   const [jobs, setJobs] = useState<JobResource[]>([]);
@@ -58,6 +99,8 @@ export function WorkflowDetailPage() {
   const [readinessHistory, setReadinessHistory] = useState<ReadinessHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [activeJobs, setActiveJobs] = useState<JobResource[]>([]);
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
 
   const loadService = useCallback(async () => {
     if (!databaseId) return;
@@ -149,7 +192,22 @@ export function WorkflowDetailPage() {
     void loadJobs();
   }, [loadJobs]);
 
-  const hasBusy = jobs.some((j) => j.status === "pending" || j.status === "running");
+  const loadActiveJobs = useCallback(async () => {
+    try {
+      const res = await api.listActiveJobs();
+      setActiveJobs(res.jobs);
+    } catch {
+      setActiveJobs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActiveJobs();
+  }, [loadActiveJobs, refreshToken, jobsPage]);
+
+  const hasBusy =
+    activeJobs.length > 0 ||
+    jobs.some((j) => j.status === "pending" || j.status === "running");
   const wasBusy = useRef(false);
 
   useEffect(() => {
@@ -157,6 +215,7 @@ export function WorkflowDetailPage() {
     const t = setInterval(() => {
       void loadJobs();
       void loadService();
+      void loadActiveJobs();
     }, 4000);
     return () => clearInterval(t);
   }, [hasBusy, loadJobs, loadService]);
@@ -169,9 +228,26 @@ export function WorkflowDetailPage() {
     wasBusy.current = hasBusy;
   }, [hasBusy, loadService]);
 
+  async function cancelQueuedJob(jobId: string) {
+    setCancellingJobId(jobId);
+    try {
+      await api.cancelJob(jobId);
+      toast.success("Cancelled", "Queued drill removed — you can start a new run.");
+      await Promise.all([loadActiveJobs(), loadJobs(), loadService()]);
+      setRefreshToken((t) => t + 1);
+    } catch (err) {
+      toast.error(
+        "Cancel failed",
+        err instanceof Error ? err.message : "Could not cancel drill"
+      );
+    } finally {
+      setCancellingJobId(null);
+    }
+  }
+
   async function refreshAll() {
     try {
-      await Promise.all([loadService(), loadJobs()]);
+      await Promise.all([loadService(), loadJobs(), loadActiveJobs()]);
       setRefreshToken((t) => t + 1);
       toast.success("Refreshed", "Workflow, readiness, and drift updated.");
     } catch (err) {
@@ -244,175 +320,217 @@ export function WorkflowDetailPage() {
         <span className="text-slate-800">{slug}</span>
       </nav>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-slate-900">{slug}</h1>
-          {last && <StatusBadge status={last.status} />}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refreshAll()}
-            className="rounded-md border border-slate-300 bg-white p-2 text-slate-600 hover:bg-slate-50"
-          >
-            <RefreshCw size={16} />
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-slate-300 bg-white p-2 text-slate-600"
-            aria-label="More actions"
-          >
-            <MoreVertical size={16} />
-          </button>
-          {canRun && (
-            <>
-              {awsMode && (
-                <button
-                  type="button"
-                  disabled={running}
-                  onClick={() => void runWorkflow("verify")}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Verify latest snapshot
-                </button>
-              )}
-              <button
-                type="button"
-                disabled={running}
-                onClick={() => void runWorkflow("full")}
-                className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                <Play size={16} />
-                {running
-                  ? "Queuing…"
-                  : awsMode
-                    ? "Run full restore drill"
-                    : "Run restore drill"}
-              </button>
-            </>
-          )}
-        </div>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-slate-900">{slug}</h1>
+        <button
+          type="button"
+          onClick={() => void refreshAll()}
+          className="rounded-md border border-slate-300 bg-white p-2 text-slate-600 hover:bg-slate-50"
+          aria-label="Refresh workflow"
+        >
+          <RefreshCw size={16} />
+        </button>
       </div>
 
-      {readiness && <RecoveryReadinessCard data={readiness} />}
-
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
-        <ReadinessTrendChart history={readinessHistory} loading={historyLoading} />
-        <RecoveryChallengesPanel
-          databaseId={service.databaseId}
-          canRun={canRun}
-          refreshToken={refreshToken}
-        />
-      </div>
-
-      <WorkflowExecutionInfo
-        plan={(user?.organizationPlan ?? "starter") as OrganizationPlan}
-        service={service}
+      <QueuedDrillBanner
+        activeJobs={activeJobs}
+        currentDatabaseId={service.databaseId}
+        canCancel={canRun}
+        cancellingId={cancellingJobId}
+        onCancel={(id) => void cancelQueuedJob(id)}
       />
 
-      <div className="mb-6 space-y-4">
-        <RecoveryDriftPanel
-          databaseId={service.databaseId}
-          onRunDrill={canRun ? () => void runWorkflow("full") : undefined}
-          runningDrill={running}
-          refreshToken={refreshToken}
-        />
-        <RecoveryContractPanel databaseId={service.databaseId} />
-      </div>
+      <WorkflowCommandCenter
+        service={service}
+        readiness={readiness}
+        lastJob={last}
+        canRun={canRun}
+        canDownload={canDownload}
+        running={running}
+        awsMode={awsMode}
+        onRunDrill={(kind) => void runWorkflow(kind)}
+      />
 
-      <div className="mb-6 grid gap-4 md:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Configuration
-          </h2>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Database</dt>
-              <dd className="font-medium text-slate-900">{service.databaseName}</dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Plan</dt>
-              <dd className="font-medium text-slate-900">
-                {service.planName}
-                {service.planVersion != null && (
-                  <span className="ml-1 text-xs font-normal text-slate-500">
-                    v{service.planVersion}
-                  </span>
-                )}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Drill</dt>
-              <dd className="text-right text-slate-900">
-                {awsMode
-                  ? "Full: snapshot → restore sandbox → validate → reap"
-                  : "Direct Postgres validation"}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Validation plan</dt>
-              <dd>
-                <Link
-                  to={`/settings/validation-plans?databaseId=${service.databaseId}`}
-                  className="text-brand hover:underline"
-                >
-                  revenant.yaml
-                </Link>
-              </dd>
-            </div>
-          </dl>
-        </section>
+      <WorkflowDetailTabs active={activeTab} onChange={setActiveTab} />
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Agent status
-            </h2>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                online
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-slate-100 text-slate-600"
-              }`}
+      <WorkflowTabPanel active={activeTab} id="overview">
+        <div className="mb-6 grid gap-4 xl:grid-cols-2">
+          {readiness ? (
+            <RecoveryReadinessCard data={readiness} compact />
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
+              Run a drill to calculate recovery readiness.
+            </div>
+          )}
+          <RecoveryPointsPanel
+            databaseId={service.databaseId}
+            awsMode={awsMode}
+            canRun={canRun}
+            compact
+            refreshToken={refreshToken}
+            lastDrillStatus={last?.status}
+            onActionComplete={() => void refreshAll()}
+            onViewAll={() => setActiveTab("recovery-points")}
+          />
+        </div>
+        {last?.status === "fail" && (
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            Last drill failed.{" "}
+            <Link
+              to={`/workflows/${databaseId}/runs/${last.id}`}
+              className="font-medium text-red-800 underline"
             >
-              {online ? "Online" : "Offline"}
-            </span>
+              View run details
+            </Link>{" "}
+            for the snapshot restore or validation error.
           </div>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Runner</dt>
-              <dd className="font-mono text-xs text-slate-900">
-                {service.runner
-                  ? `${service.runner.tokenPrefix}…`
-                  : "Not connected"}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Last heartbeat</dt>
-              <dd className="text-slate-900">
-                {service.runner?.lastSeenAt
-                  ? formatRelativeTime(service.runner.lastSeenAt)
-                  : "—"}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-slate-500">Success rate</dt>
-              <dd className="text-slate-900">
-                {totalRuns > 0
-                  ? `${Math.round((passCount / totalRuns) * 100)}%`
-                  : "—"}
-              </dd>
-            </div>
-          </dl>
-          <Link
-            to="/settings/runners"
-            className="mt-3 inline-block text-xs text-brand hover:underline"
-          >
-            Agent setup →
-          </Link>
-        </section>
-      </div>
+        )}
+        <RecoveryCostHint awsMode={awsMode} />
+      </WorkflowTabPanel>
 
+      <WorkflowTabPanel active={activeTab} id="recovery-points">
+        <div className="mb-6">
+          <RecoveryPointsPanel
+            databaseId={service.databaseId}
+            awsMode={awsMode}
+            canRun={canRun}
+            refreshToken={refreshToken}
+            lastDrillStatus={last?.status}
+            onActionComplete={() => void refreshAll()}
+          />
+        </div>
+      </WorkflowTabPanel>
+
+      <WorkflowTabPanel active={activeTab} id="analysis">
+        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <DependencyGraphPanel
+            databaseId={service.databaseId}
+            databaseName={service.databaseName}
+            readiness={readiness}
+          />
+          <RecoveryGatePanel databaseId={service.databaseId} readiness={readiness} />
+        </div>
+        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+          <ReadinessTrendChart history={readinessHistory} loading={historyLoading} />
+          <RecoveryChallengesPanel
+            databaseId={service.databaseId}
+            canRun={canRun}
+            refreshToken={refreshToken}
+          />
+        </div>
+        <div className="mb-6">
+          <RecoveryDriftPanel
+            databaseId={service.databaseId}
+            onRunDrill={canRun ? () => void runWorkflow("full") : undefined}
+            runningDrill={running}
+            refreshToken={refreshToken}
+          />
+        </div>
+      </WorkflowTabPanel>
+
+      <WorkflowTabPanel active={activeTab} id="contract">
+        <div className="mb-6 space-y-4">
+          <RecoveryContractPanel databaseId={service.databaseId} />
+          <WorkflowExecutionInfo
+            plan={(user?.organizationPlan ?? "starter") as OrganizationPlan}
+            service={service}
+          />
+        </div>
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Configuration
+            </h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Database</dt>
+                <dd className="font-medium text-slate-900">{service.databaseName}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Plan</dt>
+                <dd className="font-medium text-slate-900">
+                  {service.planName}
+                  {service.planVersion != null && (
+                    <span className="ml-1 text-xs font-normal text-slate-500">
+                      v{service.planVersion}
+                    </span>
+                  )}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Drill</dt>
+                <dd className="text-right text-slate-900">
+                  {awsMode
+                    ? "Full: snapshot → restore sandbox → validate → reap"
+                    : "Direct Postgres validation"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Validation plan</dt>
+                <dd>
+                  <Link
+                    to={`/settings/validation-plans?databaseId=${service.databaseId}`}
+                    className="text-brand hover:underline"
+                  >
+                    revenant.yaml
+                  </Link>
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Agent status
+              </h2>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                  online
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {online ? "Online" : "Offline"}
+              </span>
+            </div>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Runner</dt>
+                <dd className="font-mono text-xs text-slate-900">
+                  {service.runner
+                    ? `${service.runner.tokenPrefix}…`
+                    : "Not connected"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Last heartbeat</dt>
+                <dd className="text-slate-900">
+                  {service.runner?.lastSeenAt
+                    ? formatRelativeTime(service.runner.lastSeenAt)
+                    : "—"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Success rate</dt>
+                <dd className="text-slate-900">
+                  {totalRuns > 0
+                    ? `${Math.round((passCount / totalRuns) * 100)}%`
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
+            <Link
+              to="/settings/runners"
+              className="mt-3 inline-block text-xs text-brand hover:underline"
+            >
+              Agent setup →
+            </Link>
+          </section>
+        </div>
+      </WorkflowTabPanel>
+
+      <WorkflowTabPanel active={activeTab} id="history">
       <section
         id="workflow-execution-history"
         className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm scroll-mt-6"
@@ -490,6 +608,7 @@ export function WorkflowDetailPage() {
           </>
         )}
       </section>
+      </WorkflowTabPanel>
     </AppShell>
   );
 }

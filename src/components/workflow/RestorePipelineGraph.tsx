@@ -11,6 +11,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { effectiveJobStatus } from "./jobStatus";
 import type { JobDetailResource, JobResultResource } from "../../types/api";
 
 export type GraphNodeData = {
@@ -86,6 +87,8 @@ function stageStatus(
   stage: "trigger" | "queue" | "agent" | "complete"
 ): GraphNodeData["status"] {
   const s = job.status;
+  const resolved = effectiveJobStatus(job);
+
   if (stage === "trigger") return s === "pending" ? "running" : "pass";
   if (stage === "queue") return s === "pending" ? "pending" : "pass";
   if (stage === "agent") {
@@ -93,8 +96,8 @@ function stageStatus(
     if (s === "running") return "running";
     return "pass";
   }
-  if (s === "pass") return "pass";
-  if (s === "fail" || s === "error") return "fail";
+  if (resolved === "pass") return "pass";
+  if (resolved === "fail" || resolved === "error") return "fail";
   return "pending";
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Copy, Eye, ScrollText } from "lucide-react";
+import { Copy, Download, Eye, ScrollText } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { AuditEventDetailDialog } from "../components/AuditEventDetailDialog";
 import { DateTimeText } from "../components/DateTimeText";
@@ -27,6 +27,7 @@ export function AuditLogPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewEvent, setViewEvent] = useState<AuditEventResource | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async (nextPage: number, searchTerm: string) => {
     setLoading(true);
@@ -55,6 +56,18 @@ export function AuditLogPage() {
     void load(page, debouncedSearch);
   }, [load, page, debouncedSearch]);
 
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      await api.exportAuditLogCsv();
+      toast.success("Exported", "Audit log CSV downloaded.");
+    } catch (err) {
+      toast.error("Export failed", err instanceof Error ? err.message : "Could not export");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function copyValue(label: string, value: string) {
     try {
       await navigator.clipboard.writeText(value);
@@ -66,13 +79,24 @@ export function AuditLogPage() {
 
   return (
     <AppShell>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Audit Log</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Append-only record of changes in your organization. Times shown in{" "}
-          <span className="font-medium text-slate-800">{getUserTimezone()}</span>.
-          Search by action, resource type, event ID, resource ID, actor ID, or metadata.
-        </p>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Audit Log</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            Append-only record of changes in your organization. Times shown in{" "}
+            <span className="font-medium text-slate-800">{getUserTimezone()}</span>.
+            Search by action, resource type, event ID, resource ID, actor ID, or metadata.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={exporting}
+          onClick={() => void exportCsv()}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Download size={16} />
+          {exporting ? "Exporting…" : "Export CSV"}
+        </button>
       </div>
 
       {error && (

@@ -389,6 +389,14 @@ export const api = {
     return request("/api/v1/jobs", { method: "POST", body: JSON.stringify(body) });
   },
 
+  listActiveJobs(): Promise<{ jobs: JobResource[] }> {
+    return request("/api/v1/jobs/active");
+  },
+
+  cancelJob(id: string): Promise<{ job: JobResource }> {
+    return request(`/api/v1/jobs/${id}/cancel`, { method: "POST" });
+  },
+
   listPlanServices(): Promise<PlanServicesResponse> {
     return request("/api/v1/runners/services");
   },
@@ -483,12 +491,91 @@ export const api = {
     return request(`/api/v1/webhooks/${id}`, { method: "DELETE" });
   },
 
+  testWebhook(id: string): Promise<{ ok: true }> {
+    return request(`/api/v1/webhooks/${id}/test`, { method: "POST" });
+  },
+
   listAuditEvents(
     page = 1,
     pageSize = 20,
     search?: string
   ): Promise<Paginated<AuditEventResource>> {
     return request(withQuery("/api/v1/audit", { page, pageSize, search }));
+  },
+
+  async exportAuditLogCsv(): Promise<void> {
+    await downloadAttachment(
+      "/api/v1/audit/export",
+      `revenant-audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+    );
+  },
+
+  listRecoveryPoints(
+    databaseId: string,
+    includeDeleted = false
+  ): Promise<{ recoveryPoints: import("../types/api").RecoveryPointResource[] }> {
+    return request(withQuery(`/api/v1/databases/${databaseId}/recovery-points`, {
+      includeDeleted: includeDeleted ? "true" : undefined,
+    }));
+  },
+
+  deleteRecoveryPoint(recoveryPointId: string): Promise<{ deletedFromAws: boolean }> {
+    return request(`/api/v1/recovery-points/${recoveryPointId}`, { method: "DELETE" });
+  },
+
+  verifyRecoveryPoint(
+    recoveryPointId: string
+  ): Promise<{
+    recoveryPoint: import("../types/api").RecoveryPointResource;
+    job: { id: string };
+  }> {
+    return request(`/api/v1/recovery-points/${recoveryPointId}/verify`, { method: "POST" });
+  },
+
+  recoverFromRecoveryPoint(
+    recoveryPointId: string,
+    body: {
+      targetIdentifier: string;
+      confirmTargetIdentifier: string;
+      dbSubnetGroupName?: string;
+      vpcSecurityGroupIds?: string[];
+      instanceClass?: string;
+    }
+  ): Promise<{
+      resolvedOnly: true;
+      recoveryPointId: string;
+      snapshotIdentifier: string;
+    } | {
+      resolvedOnly: false;
+      runId: string;
+      recoveryPointId: string;
+      snapshotIdentifier: string;
+      instance: import("../types/api").RecoveryInstanceResource;
+    }> {
+    return request(`/api/v1/recovery-points/${recoveryPointId}/recover`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  listRecoveryInstances(
+    recoveryPointId: string
+  ): Promise<{ instances: import("../types/api").RecoveryInstanceResource[] }> {
+    return request(`/api/v1/recovery-points/${recoveryPointId}/instances`);
+  },
+
+  getRecoveryGate(
+    databaseId: string,
+    minScore?: number
+  ): Promise<{
+    gate: import("../types/api").RecoveryGateResult;
+    readiness: import("../types/api").RecoveryReadinessResult;
+  }> {
+    return request(
+      withQuery(`/api/v1/databases/${databaseId}/recovery-gate`, {
+        minScore,
+      })
+    );
   },
 
   getOrganizationSettings(): Promise<{ organization: import("../types/api").OrganizationSettingsResource }> {

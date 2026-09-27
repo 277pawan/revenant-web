@@ -36,6 +36,34 @@ export function statusLabel(status: string): string {
   }
 }
 
+export function effectiveJobStatus(
+  job?: { status?: string; results?: Array<{ status?: string }> | null } | null
+): string {
+  if (!job) return "pending";
+
+  const status = job.status ?? "pending";
+  const results = job.results ?? [];
+
+  if (results.length > 0) {
+    const meaningful = results.filter((r) => r.status !== "skip");
+    const hasBlockingFailure = results.some(
+      (r) => r.status === "fail" || r.status === "error"
+    );
+
+    if (meaningful.length > 0) {
+      const passed = meaningful.filter((r) => r.status === "pass").length;
+      if (passed === meaningful.length && !hasBlockingFailure) {
+        return "pass";
+      }
+      if (hasBlockingFailure) {
+        return "fail";
+      }
+    }
+  }
+
+  return status;
+}
+
 export function statusBadgeClass(status: string): string {
   switch (status) {
     case "pass":

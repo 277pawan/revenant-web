@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChevronRight, Download, FileText, Loader2, RefreshCw } from "lucide-react";
+import { ShareProofButton } from "../components/evidence/ShareProofButton";
 import { AppShell } from "../components/AppShell";
 import { RestorePipelineGraph } from "../components/workflow/RestorePipelineGraph";
 import { StatusBadge } from "../components/workflow/StatusBadge";
-import { isActiveJob, jobDurationSeconds } from "../components/workflow/jobStatus";
+import {
+  effectiveJobStatus,
+  isActiveJob,
+  jobDurationSeconds,
+} from "../components/workflow/jobStatus";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useToast } from "../components/toast/ToastProvider";
@@ -29,6 +34,7 @@ export function RunDetailPage() {
   const [selectedCheck, setSelectedCheck] = useState<JobResultResource | null>(
     null
   );
+  const [cancelling, setCancelling] = useState(false);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -55,6 +61,23 @@ export function RunDetailPage() {
     [jobId, databaseId]
   );
 
+  async function cancelRun() {
+    if (!jobId) return;
+    setCancelling(true);
+    try {
+      await api.cancelJob(jobId);
+      toast.success("Cancelled", "Drill removed from the queue.");
+      await load({ silent: true });
+    } catch (err) {
+      toast.error(
+        "Cancel failed",
+        err instanceof Error ? err.message : "Could not cancel drill"
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   async function refreshRun() {
     try {
       await load({ silent: true });
@@ -78,10 +101,11 @@ export function RunDetailPage() {
   }, [job, load]);
 
   const slug = service ? workflowSlug(service) : job?.databaseName ?? "workflow";
+  const effectiveStatus = effectiveJobStatus(job);
   const passChecks = job?.results.filter((r) => r.status === "pass").length ?? 0;
   const totalChecks = job?.results.length ?? 0;
   const reportReady =
-    job != null && ["pass", "fail", "error"].includes(job.status);
+    job != null && ["pass", "fail", "error"].includes(effectiveStatus);
 
   async function downloadReport() {
     if (!job || !reportReady) return;
@@ -176,7 +200,7 @@ export function RunDetailPage() {
                 <h1 className="font-mono text-2xl font-semibold text-slate-900">
                   {runShortId(job.id)}
                 </h1>
-                <StatusBadge status={job.status} />
+                <StatusBadge status={effectiveStatus} />
               </div>
               <p className="mt-1 text-sm text-slate-500">
                 {new Date(job.createdAt).toLocaleString()}
@@ -196,6 +220,12 @@ export function RunDetailPage() {
               </button>
               {canDownload && (
                 <>
+                  <ShareProofButton
+                    job={job}
+                    workflowName={slug}
+                    variant="primary"
+                    className="flex-1 sm:flex-none"
+                  />
                   <button
                     type="button"
                     disabled={!reportReady || downloading !== null}
@@ -232,7 +262,7 @@ export function RunDetailPage() {
                     )}
                     JSON
                   </button>
-                  {job.status === "pass" && (
+                  {effectiveStatus === "pass" && (
                     <>
                       <button
                         type="button"
@@ -279,6 +309,31 @@ export function RunDetailPage() {
             </div>
           </div>
 
+          {job.results.some(
+            (r) => r.checkType === "snapshot" && r.status === "fail"
+          ) && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <p className="font-medium">Snapshot step failed (full drill only)</p>
+              <p className="mt-1">
+                Revenant checked your <strong>live RDS</strong> before creating a new snapshot.
+                One or more validation plan checks failed, so no snapshot was taken. This is
+                intentional — bad data is not snapshotted.
+              </p>
+              <p className="mt-2">
+                To test restore without a new snapshot, use{" "}
+                <strong>Verify snapshot</strong> on the workflow page. To fix this run, open your{" "}
+                <Link
+                  to={`/settings/validation-plans?databaseId=${job.databaseId}`}
+                  className="font-medium text-amber-900 underline"
+                >
+                  validation plan
+                </Link>{" "}
+                or refresh data on live <code className="text-xs">database-1</code>, then run full
+                drill again.
+              </p>
+            </div>
+          )}
+
           <div className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-4">
             <div>
               <p className="text-[10px] font-semibold uppercase text-slate-400">
@@ -294,9 +349,11 @@ export function RunDetailPage() {
               </p>
               <p
                 className={`mt-1 text-lg font-semibold ${
-                  job.status === "fail" || job.status === "error"
+                  effectiveStatus === "fail" || effectiveStatus === "error"
                     ? "text-red-600"
-                    : "text-slate-900"
+                    : effectiveStatus === "pass"
+                      ? "text-emerald-600"
+                      : "text-slate-900"
                 }`}
               >
                 {totalChecks > 0
@@ -328,11 +385,25 @@ export function RunDetailPage() {
             <h2 className="mb-3 text-sm font-semibold text-slate-900">
               Restore plan execution pipeline
             </h2>
-            {job.status === "pending" && (
-              <p className="mb-3 flex items-center gap-2 text-sm text-slate-500">
-                <Loader2 size={14} className="animate-spin" />
-                Waiting for agent…
-              </p>
+            {isActiveJob(job.status) && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <p className="flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  {job.status === "pending"
+                    ? "Waiting for agent — this blocks new drills on Starter"
+                    : "Drill in progress"}
+                </p>
+                {canRun && (
+                  <button
+                    type="button"
+                    disabled={cancelling}
+                    onClick={() => void cancelRun()}
+                    className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {cancelling ? "Cancelling…" : "Cancel queue"}
+                  </button>
+                )}
+              </div>
             )}
             <RestorePipelineGraph job={job} onSelectCheck={setSelectedCheck} />
           </section>

@@ -4,6 +4,41 @@ React dashboard for **Revenant Cloud** — the control plane where teams registe
 
 > **Revenant** answers one question: *did your last backup really restore?*
 
+**Full product status & roadmap:** [REVENANT_STATUS_AND_ROADMAP.md](../revenant-cloud/docs/REVENANT_STATUS_AND_ROADMAP.md)
+
+---
+
+## Product status (Sep 2026)
+
+### ✅ Done — launch track
+
+| # | Item |
+|---|------|
+| 1 | **Production** — Cloud Run API CI/CD, Firebase frontends, live Razorpay, prod DB migrations |
+| 2 | **Starter billing** — ₹1 autopay + ₹499/mo subscription, 30-day trial |
+| 3 | **Pro** — ₹1,499/mo plan, upgrade path + Pro signup from pricing |
+| — | Fund us (`/coffee`) one-time Razorpay, OAuth, password reset, plan API limits |
+
+### 🔨 Remaining — do next (steps 4 & 5)
+
+| # | Item | What to build |
+|---|------|----------------|
+| **4** | **Billing settings page** | Cloud **Settings → Plan & billing**: plan name, trial days left, subscription status, link to upgrade / marketing billing. API: `GET /api/v1/billing/subscription`. |
+| **5** | **Onboarding polish** | Sample workflow template (one-click first drill), empty-state CTAs, optional `ALLOW_OPEN_REGISTRATION=false` for invite-only. |
+
+### After 4 & 5 — what Revenant builds next
+
+| Phase | Focus |
+|-------|--------|
+| **Habit** | Weekly digest email, Slack drill alerts, RTO breach notifications |
+| **Recovery Intelligence** | RTO/RPO contracts, app-level smoke after restore, readiness passport for audits |
+| **DB & providers** | HTTP app checks → Redis/S3 deps → MySQL → GCP Cloud SQL (see roadmap doc) |
+| **Scale** | Enterprise SSO, private-VPC agent, custom domains (`app.revenant.dev`) |
+
+**Target user flow:** Pricing → register → ₹1 on `/billing` → cloud → first green drill in &lt;30 min → weekly schedule → evidence PDF for the boss → upgrade to Pro when fleet grows.
+
+Details, mermaid diagram, and SQL testing helpers: **[REVENANT_STATUS_AND_ROADMAP.md](../revenant-cloud/docs/REVENANT_STATUS_AND_ROADMAP.md)**
+
 ---
 
 ## The Revenant platform

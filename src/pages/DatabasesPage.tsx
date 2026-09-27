@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Database, FileCode2, Lock, Pencil, Play, Plus, Search, Trash2 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
 import { useToast } from "../components/toast/ToastProvider";
@@ -102,23 +103,29 @@ export function DatabasesPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Databases</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Fleet connection registry. Passwords are AES-encrypted and never returned to the browser.
-          </p>
-        </div>
+      <PageHeader
+        title="Databases"
+        description="Register the Postgres or AWS RDS connections you want to protect. Credentials stay encrypted — Revenant never shows passwords in the browser."
+      >
         {canWrite && (
-          <Link
-            to="/databases/new"
-            className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
-          >
-            <Plus size={16} />
-            Add database
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/databases/new?sample=aws-freetier"
+              className="inline-flex items-center gap-2 rounded-md border border-brand/30 bg-blue-50 px-4 py-2 text-sm font-medium text-brand hover:bg-blue-100"
+            >
+              <Database size={16} />
+              Import AWS sample
+            </Link>
+            <Link
+              to="/databases/new"
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+            >
+              <Plus size={16} />
+              Add database
+            </Link>
+          </div>
         )}
-      </div>
+      </PageHeader>
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
@@ -185,13 +192,22 @@ export function DatabasesPage() {
               Register a Postgres connection, then attach a validation plan and invite your team.
             </p>
             {canWrite && (
-              <Link
-                to="/databases/new"
-                className="mt-6 inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-              >
-                <Plus size={16} />
-                Add your first database
-              </Link>
+              <div className="mt-6 flex flex-wrap justify-center gap-3">
+                <Link
+                  to="/databases/new?sample=aws-freetier"
+                  className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  <Database size={16} />
+                  Quick start: AWS sample
+                </Link>
+                <Link
+                  to="/databases/new"
+                  className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  <Plus size={16} />
+                  Add your own database
+                </Link>
+              </div>
             )}
           </div>
         ) : filtered.length === 0 ? (

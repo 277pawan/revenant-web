@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Lock, ShieldCheck } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { WizardStepper } from "../components/WizardStepper";
-import { Field, Input, Select, Textarea } from "../components/ui/Field";
+import { Field, Input, SecretInput, Select, Textarea } from "../components/ui/Field";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { roleHasPermission } from "../types/api";
@@ -16,9 +16,27 @@ import {
   type DatabaseWizardValues,
 } from "../lib/forms/database.schema";
 
+const SAMPLE_PRESETS: Record<
+  string,
+  Partial<DatabaseWizardValues> & { description: string }
+> = {
+  "aws-freetier": {
+    name: "Production RDS (sample)",
+    description: "Sample AWS RDS workflow — replace instance ID, region, and AWS keys.",
+    recoveryMode: "aws-rds",
+    region: "eu-west-2",
+    rdsSourceIdentifier: "database-1",
+    recoveryUseFreetier: true,
+    username: "postgres",
+  },
+};
+
 export function DatabaseWizardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const sampleId = searchParams.get("sample");
+  const samplePreset = sampleId ? SAMPLE_PRESETS[sampleId] : undefined;
   const canWrite = user ? roleHasPermission(user.role, "databases:write") : false;
   const allowDirectPostgres = user?.organizationPlan !== "starter";
 
@@ -35,7 +53,9 @@ export function DatabaseWizardPage() {
     formState: { errors },
   } = useForm<DatabaseWizardValues>({
     resolver: zodResolver(databaseWizardSchema),
-    defaultValues: wizardDefaults,
+    defaultValues: samplePreset
+      ? { ...wizardDefaults, ...samplePreset }
+      : wizardDefaults,
     mode: "onBlur",
   });
 
@@ -62,7 +82,7 @@ export function DatabaseWizardPage() {
     setSaving(true);
     setSubmitError(null);
     try {
-      await api.createDatabase({
+      const { database } = await api.createDatabase({
         name: values.name.trim(),
         engine: "postgres",
         recoveryMode: values.recoveryMode,
@@ -89,8 +109,18 @@ export function DatabaseWizardPage() {
           values.recoveryMode === "aws-rds"
             ? values.awsSecretAccessKey.trim()
             : undefined,
+        awsSessionToken:
+          values.recoveryMode === "aws-rds" && values.awsSessionToken.trim()
+            ? values.awsSessionToken.trim()
+            : undefined,
         description: values.description?.trim() || undefined,
       });
+      if (sampleId === "aws-freetier") {
+        navigate(
+          `/settings/validation-plans?databaseId=${database.id}&template=aws-freetier`
+        );
+        return;
+      }
       navigate("/databases");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Failed to create database");
@@ -227,6 +257,24 @@ export function DatabaseWizardPage() {
                   Actions.
                 </div>
                 <Field
+                  label="RDS endpoint (host)"
+                  htmlFor="host"
+                  required
+                  hint="AWS Console → RDS → Endpoint hostname"
+                  error={errors.host?.message}
+                >
+                  <Input
+                    id="host"
+                    invalid={!!errors.host}
+                    placeholder="database-1.xxxx.eu-west-2.rds.amazonaws.com"
+                    className="font-mono text-xs"
+                    {...register("host")}
+                  />
+                </Field>
+                <Field label="Port" htmlFor="port" required error={errors.port?.message}>
+                  <Input id="port" type="number" invalid={!!errors.port} {...register("port")} />
+                </Field>
+                <Field
                   label="RDS instance identifier"
                   htmlFor="rdsSourceIdentifier"
                   required
@@ -302,9 +350,8 @@ export function DatabaseWizardPage() {
                     required
                     error={errors.password?.message}
                   >
-                    <Input
+                    <SecretInput
                       id="password"
-                      type="password"
                       invalid={!!errors.password}
                       autoComplete="new-password"
                       {...register("password")}
@@ -331,13 +378,26 @@ export function DatabaseWizardPage() {
                   required
                   error={errors.awsSecretAccessKey?.message}
                 >
-                  <Input
+                  <SecretInput
                     id="awsSecretAccessKey"
-                    type="password"
                     invalid={!!errors.awsSecretAccessKey}
                     className="font-mono text-xs"
                     autoComplete="new-password"
                     {...register("awsSecretAccessKey")}
+                  />
+                </Field>
+                <Field
+                  label="AWS session token"
+                  htmlFor="awsSessionToken"
+                  hint="Optional for temporary IAM credentials"
+                  error={errors.awsSessionToken?.message}
+                >
+                  <SecretInput
+                    id="awsSessionToken"
+                    invalid={!!errors.awsSessionToken}
+                    className="font-mono text-xs"
+                    autoComplete="off"
+                    {...register("awsSessionToken")}
                   />
                 </Field>
               </div>
@@ -410,9 +470,8 @@ export function DatabaseWizardPage() {
                     hint="Optional. Encrypted with AES-256-GCM — never shown again in the UI."
                     error={errors.password?.message}
                   >
-                    <Input
+                    <SecretInput
                       id="password"
-                      type="password"
                       invalid={!!errors.password}
                       autoComplete="new-password"
                       {...register("password")}

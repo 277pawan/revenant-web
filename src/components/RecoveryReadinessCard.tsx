@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, ChevronRight, Shield } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Shield, TrendingDown } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { RecoveryReadinessResource, ReadinessDimension } from "../types/api";
 
@@ -50,9 +50,22 @@ function dimensionAction(
         to: `/settings/validation-plans?databaseId=${databaseId}`,
       };
     case "application_health":
-      return { label: "Edit contract", to: `/workflows/${databaseId}#recovery-contract` };
+      return {
+        label: "Edit contract",
+        to: `/workflows/${databaseId}?tab=contract#recovery-contract`,
+      };
     case "dependencies":
-      return { label: "Edit contract", to: `/workflows/${databaseId}#recovery-contract` };
+      return {
+        label: "Edit contract",
+        to: `/workflows/${databaseId}?tab=contract#recovery-contract`,
+      };
+    case "regression":
+      return { label: "View history", to: `/workflows/${databaseId}` };
+    case "validation_checks":
+      return {
+        label: "Edit validation plan",
+        to: `/settings/validation-plans?databaseId=${databaseId}`,
+      };
     default:
       return null;
   }
@@ -145,49 +158,107 @@ export function RecoveryReadinessCard({
         </div>
         <div className="px-4 py-2.5">
           <div className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-            Last verified
+            Latest drill
           </div>
           <div className="font-medium text-slate-900">
-            {data.readiness.lastVerifiedAt
-              ? new Date(data.readiness.lastVerifiedAt).toLocaleString(undefined, {
+            {data.readiness.latestDrillAt
+              ? new Date(data.readiness.latestDrillAt).toLocaleString(undefined, {
                   month: "short",
                   day: "numeric",
                   hour: "2-digit",
                   minute: "2-digit",
                 })
               : "Never"}
+            {data.readiness.latestDrillStatus &&
+              data.readiness.latestDrillStatus !== "pass" && (
+                <span className="ml-1 text-xs font-semibold text-red-700">
+                  ({data.readiness.latestDrillStatus})
+                </span>
+              )}
           </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <tbody className="divide-y divide-slate-100">
-            {data.readiness.dimensions.map((dim) => {
+      {data.readiness.regression?.detected && (
+        <div
+          className={`flex items-start gap-2 border-b px-4 py-2.5 text-sm ${
+            data.readiness.regression.severity === "critical"
+              ? "border-red-100 bg-red-50 text-red-900"
+              : "border-amber-100 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <TrendingDown size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <div className="font-semibold">Recovery regression vs prior drill</div>
+            <div className="text-xs opacity-90">{data.readiness.regression.message}</div>
+          </div>
+        </div>
+      )}
+
+      {compact ? (
+        <div className="space-y-2 px-4 py-3">
+          {data.readiness.dimensions
+            .filter((dim) => dim.status === "fail" || dim.status === "warn")
+            .slice(0, 4)
+            .map((dim) => {
               const action = dimensionAction(dim, data.databaseId);
               return (
-                <tr key={dim.id} className="hover:bg-slate-50/80">
-                  <td className="w-8 px-3 py-2">{dimIcon(dim.status)}</td>
-                  <td className="whitespace-nowrap px-1 py-2 font-medium text-slate-800">
-                    {dim.label}
-                  </td>
-                  <td className="px-2 py-2 text-slate-500">{dim.detail ?? "—"}</td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right">
-                    {action ? (
-                      <Link
-                        to={action.to}
-                        className="text-xs font-medium text-brand hover:underline"
-                      >
-                        {action.label} →
-                      </Link>
-                    ) : null}
-                  </td>
-                </tr>
+                <div
+                  key={dim.id}
+                  className="flex items-start gap-2 rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 text-sm"
+                >
+                  {dimIcon(dim.status)}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-slate-800">{dim.label}</div>
+                    <div className="text-xs text-slate-500">{dim.detail ?? "—"}</div>
+                  </div>
+                  {action ? (
+                    <Link
+                      to={action.to}
+                      className="shrink-0 text-xs font-medium text-brand hover:underline"
+                    >
+                      Fix →
+                    </Link>
+                  ) : null}
+                </div>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+          {data.readiness.dimensions.every(
+            (dim) => dim.status === "pass" || dim.status === "not_configured"
+          ) && (
+            <p className="text-sm text-slate-600">All configured checks are passing.</p>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <tbody className="divide-y divide-slate-100">
+              {data.readiness.dimensions.map((dim) => {
+                const action = dimensionAction(dim, data.databaseId);
+                return (
+                  <tr key={dim.id} className="hover:bg-slate-50/80">
+                    <td className="w-8 px-3 py-2">{dimIcon(dim.status)}</td>
+                    <td className="whitespace-nowrap px-1 py-2 font-medium text-slate-800">
+                      {dim.label}
+                    </td>
+                    <td className="px-2 py-2 text-slate-500">{dim.detail ?? "—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      {action ? (
+                        <Link
+                          to={action.to}
+                          className="text-xs font-medium text-brand hover:underline"
+                        >
+                          {action.label} →
+                        </Link>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {topRisks.length > 0 && (
         <div className="border-t border-amber-100 bg-amber-50/60 px-4 py-2.5">
@@ -202,19 +273,21 @@ export function RecoveryReadinessCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2">
-        <span className="text-xs text-slate-500">
-          Score from applicable checks on last drill — advisory gaps listed below
-        </span>
-        <button
-          type="button"
-          onClick={openWorkflow}
-          className="inline-flex items-center gap-0.5 text-xs font-medium text-brand hover:underline"
-        >
-          {onThisWorkflow ? "Execution history" : "Open workflow"}
-          <ChevronRight size={14} />
-        </button>
-      </div>
+      {!compact && (
+        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2">
+          <span className="text-xs text-slate-500">
+            Score reflects your latest drill outcome.
+          </span>
+          <button
+            type="button"
+            onClick={openWorkflow}
+            className="inline-flex items-center gap-0.5 text-xs font-medium text-brand hover:underline"
+          >
+            {onThisWorkflow ? "Execution history" : "Open workflow"}
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
     </section>
   );
 }

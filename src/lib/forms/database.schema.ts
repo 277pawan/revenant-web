@@ -25,6 +25,7 @@ const baseDatabaseFields = z.object({
   recoverySandboxInstanceClass: z.string().max(50, "Instance class is too long"),
   awsAccessKeyId: z.string().max(128, "Access key is too long"),
   awsSecretAccessKey: z.string().max(128, "Secret key is too long"),
+  awsSessionToken: z.string().max(256, "Session token is too long"),
 });
 
 function refineRecoveryMode(
@@ -57,6 +58,13 @@ function refineRecoveryMode(
     return;
   }
 
+  if (!data.host.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "RDS endpoint (host) is required for snapshot checks on the live database",
+      path: ["host"],
+    });
+  }
   if (!data.rdsSourceIdentifier.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -87,7 +95,9 @@ function refineRecoveryMode(
   }
 
   const hasNewAws =
-    data.awsAccessKeyId.trim().length > 0 || data.awsSecretAccessKey.trim().length > 0;
+    data.awsAccessKeyId.trim().length > 0 ||
+    data.awsSecretAccessKey.trim().length > 0 ||
+    data.awsSessionToken.trim().length > 0;
 
   if (requireAwsKeys || hasNewAws) {
     if (!data.awsAccessKeyId.trim()) {
@@ -147,6 +157,7 @@ export const wizardDefaults: DatabaseWizardValues = {
   recoverySandboxInstanceClass: "",
   awsAccessKeyId: "",
   awsSecretAccessKey: "",
+  awsSessionToken: "",
 };
 
 export const stepFields: Record<1 | 2 | 3 | 4, (keyof DatabaseWizardValues)[]> = {
@@ -163,6 +174,7 @@ export const stepFields: Record<1 | 2 | 3 | 4, (keyof DatabaseWizardValues)[]> =
     "recoverySandboxInstanceClass",
     "awsAccessKeyId",
     "awsSecretAccessKey",
+    "awsSessionToken",
   ],
   3: [],
   4: [],

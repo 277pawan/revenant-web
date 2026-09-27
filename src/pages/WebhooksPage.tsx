@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Webhook, ArrowLeft } from "lucide-react";
+import { Activity, ArrowLeft, ArrowUpRight, Send, Webhook } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { CustomHttpGuide } from "../components/CustomHttpGuide";
@@ -42,6 +42,7 @@ export function WebhooksPage() {
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<FormStep>("list");
   const [selectedProvider, setSelectedProvider] = useState<WebhookProvider | null>(null);
+  const [previewProvider, setPreviewProvider] = useState<WebhookProvider | null>(null);
   const [name, setName] = useState("");
   const [slackUrl, setSlackUrl] = useState("");
   const [httpUrl, setHttpUrl] = useState("");
@@ -53,6 +54,7 @@ export function WebhooksPage() {
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<WebhookEndpointResource | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   const load = useCallback(async (nextPage: number) => {
     setLoading(true);
@@ -85,9 +87,11 @@ export function WebhooksPage() {
     setStep("list");
   }
 
-  function startCreate() {
+  function startCreateFor(provider: WebhookProvider) {
     resetForm();
-    setStep("pick-provider");
+    setSelectedProvider(provider);
+    setName(providerLabel(provider));
+    setStep("configure");
   }
 
   async function onCreate() {
@@ -146,6 +150,21 @@ export function WebhooksPage() {
     }
   }
 
+  async function sendTest(endpoint: WebhookEndpointResource) {
+    setTestingId(endpoint.id);
+    setError(null);
+    try {
+      await api.testWebhook(endpoint.id);
+      toast.success("Test sent", `Check ${providerLabel(endpoint.provider)} for the sample alert.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Test delivery failed";
+      setError(message);
+      toast.error("Test failed", message);
+    } finally {
+      setTestingId(null);
+    }
+  }
+
   async function confirmRemove() {
     if (!removeTarget) return;
     setRemoving(true);
@@ -175,16 +194,6 @@ export function WebhooksPage() {
             Slack, Gmail/email, or custom HTTP when jobs finish.
           </p>
         </div>
-        {canWrite && step === "list" && (
-          <button
-            type="button"
-            onClick={startCreate}
-            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand/90 sm:w-auto"
-          >
-            <Plus size={16} />
-            Add integration
-          </button>
-        )}
       </div>
 
       {newSecret && (
@@ -204,6 +213,117 @@ export function WebhooksPage() {
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700 sm:px-4">
           {error}
         </div>
+      )}
+
+      {step === "list" && (
+        <section className="mb-8 overflow-hidden rounded-2xl border border-slate-700 bg-[#0b1420] text-white shadow-lg">
+          <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-300">
+                Event routing
+              </p>
+              <h2 className="mt-1 text-lg font-semibold">Choose a destination</h2>
+            </div>
+            <p className="text-sm text-slate-400">One recovery event, delivered where it matters.</p>
+          </div>
+
+          <div className="grid grid-cols-1 items-center gap-4 p-4 sm:p-6 lg:grid-cols-[minmax(220px,0.8fr)_64px_minmax(0,1.4fr)] lg:gap-5">
+            <div className="relative z-10 flex min-h-[96px] items-center gap-4 rounded-xl border border-slate-600 bg-slate-800/80 p-4 shadow-md">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-300/20">
+                <Activity size={23} />
+              </span>
+              <div className="min-w-0">
+                <p className="font-medium text-white">Recovery event</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  Job results, contract breaches, and regressions
+                </p>
+              </div>
+              <span className="ml-auto hidden h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] sm:block" />
+            </div>
+
+            <svg
+              className="-mx-5 hidden h-[260px] w-[calc(100%+2.5rem)] overflow-visible lg:block"
+              viewBox="0 0 64 260"
+              preserveAspectRatio="none"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path d="M0 130H28M28 40V220" stroke="#334a61" strokeWidth="1.5" />
+              {INTEGRATION_PROVIDERS.map((provider, index) => {
+                const connected = endpoints.some(
+                  (endpoint) => endpoint.provider === provider.id && endpoint.enabled
+                );
+                const highlighted = previewProvider === provider.id;
+                const y = 40 + index * 90;
+                return (
+                  <path
+                    key={provider.id}
+                    d={`M28 ${y}H64`}
+                    stroke={highlighted ? "#67e8f9" : connected ? "#34d399" : "#334a61"}
+                    strokeWidth={highlighted ? 2 : 1.5}
+                    className="transition-all duration-200"
+                  />
+                );
+              })}
+            </svg>
+
+            <div className="grid gap-2.5">
+              {INTEGRATION_PROVIDERS.map((provider) => {
+                const connectedCount = endpoints.filter(
+                  (endpoint) => endpoint.provider === provider.id && endpoint.enabled
+                ).length;
+                const highlighted = previewProvider === provider.id;
+                return (
+                  <button
+                    key={provider.id}
+                    type="button"
+                    disabled={!canWrite}
+                    onClick={() => startCreateFor(provider.id)}
+                    onMouseEnter={() => setPreviewProvider(provider.id)}
+                    onMouseLeave={() => setPreviewProvider(null)}
+                    onFocus={() => setPreviewProvider(provider.id)}
+                    onBlur={() => setPreviewProvider(null)}
+                    className={`group flex h-20 w-full items-center gap-3 rounded-xl border px-3 text-left transition duration-200 sm:px-4 ${
+                      highlighted
+                        ? "border-cyan-300/70 bg-slate-700/80 shadow-[0_0_24px_rgba(34,211,238,0.1)]"
+                        : "border-slate-700 bg-slate-800/65 hover:border-slate-500 hover:bg-slate-800"
+                    } ${canWrite ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <IntegrationProviderIcon provider={provider.id} size={42} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-white">
+                        {provider.name}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-400">
+                        {provider.description}
+                      </span>
+                    </span>
+                    <span
+                      className={`hidden shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${
+                        connectedCount > 0
+                          ? "bg-emerald-400/10 text-emerald-300"
+                          : "bg-white/5 text-slate-400"
+                      }`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          connectedCount > 0 ? "bg-emerald-400" : "bg-slate-500"
+                        }`}
+                      />
+                      {connectedCount > 0 ? `${connectedCount} connected` : "Not connected"}
+                    </span>
+                    {canWrite && (
+                      <ArrowUpRight
+                        size={16}
+                        className="shrink-0 text-slate-500 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-cyan-200"
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
       )}
 
       {step === "pick-provider" && (
@@ -371,9 +491,13 @@ export function WebhooksPage() {
             {loading ? (
               <p className="py-8 text-center text-sm text-slate-500">Loading…</p>
             ) : endpoints.length === 0 ? (
-              <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-slate-500">
+              <div className="rounded-xl border border-slate-200 bg-white px-6 py-12 text-center">
                 <Webhook className="mx-auto mb-2 text-slate-300" size={32} />
-                <p className="text-sm">No integrations yet.</p>
+                <p className="font-medium text-slate-800">No integrations yet</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                  Connect Slack or email so your team hears about failed drills and contract
+                  breaches.
+                </p>
               </div>
             ) : (
               endpoints.map((e) => (
@@ -402,13 +526,24 @@ export function WebhooksPage() {
                       </p>
                       <p className="mt-2 text-xs text-slate-500">{e.events.join(", ")}</p>
                       {canWrite && (
-                        <button
-                          type="button"
-                          onClick={() => setRemoveTarget(e)}
-                          className="mt-3 text-xs text-red-600 hover:underline"
-                        >
-                          Remove
-                        </button>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            disabled={testingId === e.id}
+                            onClick={() => void sendTest(e)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-50"
+                          >
+                            <Send size={12} />
+                            {testingId === e.id ? "Sending…" : "Send test"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRemoveTarget(e)}
+                            className="text-xs text-red-600 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -439,9 +574,12 @@ export function WebhooksPage() {
                   </tr>
                 ) : endpoints.length === 0 ? (
                   <tr>
-                    <td colSpan={canWrite ? 6 : 5} className="px-4 py-12 text-center text-slate-500">
+                    <td colSpan={canWrite ? 6 : 5} className="px-4 py-14 text-center">
                       <Webhook className="mx-auto mb-2 text-slate-300" size={32} />
-                      No integrations yet.
+                      <p className="font-medium text-slate-800">No integrations yet</p>
+                      <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+                        Connect Slack or email for drill failures and RTO/RPO contract breaches.
+                      </p>
                     </td>
                   </tr>
                 ) : (
@@ -471,13 +609,24 @@ export function WebhooksPage() {
                       </td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setRemoveTarget(e)}
-                            className="text-xs text-red-600 hover:underline"
-                          >
-                            Remove
-                          </button>
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              disabled={testingId === e.id}
+                              onClick={() => void sendTest(e)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline disabled:opacity-50"
+                            >
+                              <Send size={12} />
+                              {testingId === e.id ? "Sending…" : "Test"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRemoveTarget(e)}
+                              className="text-xs text-red-600 hover:underline"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>

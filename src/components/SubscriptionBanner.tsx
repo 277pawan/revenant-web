@@ -51,19 +51,17 @@ export function SubscriptionBanner({ user }: { user: AuthUser }) {
         <div className="flex items-start gap-2">
           <Sparkles size={18} className="mt-0.5 shrink-0 text-blue-600" />
           <div>
-            <p className="font-medium">
-              {plan.name} trial · {daysLeft} day{daysLeft === 1 ? "" : "s"} left
-            </p>
+            <p className="font-medium">Autopay active — run your first restore drill</p>
             <p className="mt-0.5 text-blue-800">
-              Recurring billing is active. {plan.priceLabel} charges automatically when your trial ends.
+              {plan.priceLabel} starts when your trial ends. Import the sample workflow to get a green drill fast.
             </p>
           </div>
         </div>
         <Link
-          to="/databases/new"
+          to="/databases/new?sample=aws-freetier"
           className="shrink-0 rounded-md border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-900 hover:bg-blue-100"
         >
-          Run first drill
+          Quick start workflow
         </Link>
       </div>
     );

@@ -22,8 +22,10 @@ import { EvidenceVaultPage } from "./pages/EvidenceVaultPage";
 import { WebhooksPage } from "./pages/WebhooksPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { GeneralSettingsPage } from "./pages/GeneralSettingsPage";
+import { BillingSettingsPage } from "./pages/BillingSettingsPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { OAuthCompletePage } from "./pages/OAuthCompletePage";
+import { RecoveredInstancesPage } from "./pages/RecoveredInstancesPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -143,6 +145,14 @@ export function App() {
         }
       />
       <Route
+        path="/settings/billing"
+        element={
+          <ProtectedRoute>
+            <BillingSettingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/settings/credentials"
         element={
           <ProtectedRoute>
@@ -187,6 +197,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <EvidenceVaultPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/recovery-instances"
+        element={
+          <ProtectedRoute>
+            <RecoveredInstancesPage />
           </ProtectedRoute>
         }
       />

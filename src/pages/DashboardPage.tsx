@@ -12,6 +12,9 @@ import {
   Zap,
 } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { FleetPostureSummary } from "../components/dashboard/FleetPostureSummary";
+import { NextStepCard } from "../components/dashboard/NextStepCard";
+import { ProductGuideLauncher } from "../components/guide/ProductGuideWizard";
 import { SubscriptionBanner } from "../components/SubscriptionBanner";
 import { RecoveryReadinessCard } from "../components/RecoveryReadinessCard";
 import { RpoTrendChart } from "../components/RpoTrendChart";
@@ -20,7 +23,8 @@ import { DateTimeText } from "../components/DateTimeText";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { getPlanDefinition } from "../lib/plans";
-import { site } from "../lib/site";
+import { marketingLink, site } from "../lib/site";
+import { redirectToWebsiteBilling } from "../lib/subscription-access";
 import { formatRelativeTime } from "../lib/datetime";
 import type {
   DashboardFleetRow,
@@ -222,16 +226,19 @@ export function DashboardPage() {
               <Shield size={14} />
               DR proof · {user?.organizationName}
             </div>
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{heroHeadline}</h1>
+            <h1 data-tour="dashboard-hero" className="text-2xl font-bold tracking-tight sm:text-3xl">{heroHeadline}</h1>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
-              Recovery readiness — not just backup success. See whether your system could actually
-              recover within RTO/RPO, what changed since the last proof, and where the signed
-              evidence lives.
+              See which databases would actually come back after an outage, how fast recovery would
+              be, and download signed proof for your team or auditors.
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
+              <div data-tour="dashboard-guide-launcher">
+                <ProductGuideLauncher compact />
+              </div>
               {canRun && (
                 <Link
                   to="/workflows"
+                  data-tour="dashboard-run-drill"
                   className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-blue-50"
                 >
                   <Play size={16} fill="currentColor" />
@@ -282,40 +289,47 @@ export function DashboardPage() {
         </div>
       )}
 
+      {overview && !allOnboarded && <NextStepCard steps={overview.onboarding} />}
+
+      {overview && (
+        <FleetPostureSummary summary={overview.summary} loading={loading} />
+      )}
+
       {readiness && <RecoveryReadinessCard data={readiness} compact />}
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-tour="dashboard-metrics" className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           {
-            label: "7-day pass rate",
+            label: "Drills passed (7 days)",
             value:
               overview?.summary.passRate7d != null
                 ? `${overview.summary.passRate7d}%`
                 : "—",
-            hint: "Restore drills that passed",
+            hint: "Share of restore drills that succeeded",
             icon: TrendingUp,
           },
           {
-            label: "Avg recovery (RTO)",
+            label: "Avg recovery time",
             value: formatRto(overview?.summary.avgRtoSeconds7d ?? null),
-            hint: "Last 7 days · successful runs",
+            hint: "How long successful restores took",
             icon: Clock,
           },
           {
-            label: "Failures (24h)",
+            label: "Failed drills (24h)",
             value: overview?.summary.failures24h ?? "—",
-            hint: "Failed or errored drills",
+            hint: "Needs investigation if above zero",
             icon: AlertTriangle,
           },
           {
             label: "Evidence reports",
             value: overview?.summary.evidenceCount ?? "—",
-            hint: "Signed JSON in vault",
+            hint: "Signed proof ready to download",
             icon: FileCheck,
           },
         ].map((card) => (
           <div
             key={card.label}
+            data-tour={card.label === "Drills passed (7 days)" ? "dashboard-metrics" : undefined}
             className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
           >
             <div className="flex items-center justify-between">
@@ -336,7 +350,7 @@ export function DashboardPage() {
         <div className="mb-3">
           <h2 className="text-sm font-semibold text-slate-900">Recovery trends</h2>
           <p className="text-xs text-slate-500">
-            Left = how fast you restored · Right = how old the backup data was
+            Left: time to restore · Right: how stale backup data was (RPO)
           </p>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
@@ -350,10 +364,12 @@ export function DashboardPage() {
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
             <div>
-              <h2 className="font-semibold text-slate-900">Fleet restore posture</h2>
+              <h2 className="font-semibold text-slate-900">Your protected databases</h2>
               <p className="text-xs text-slate-500">
-                {overview?.summary.agentsOnline ?? 0} agent
-                {(overview?.summary.agentsOnline ?? 0) === 1 ? "" : "s"} online now
+                Green = last drill passed · Red = action needed
+                {(overview?.summary.agentsOnline ?? 0) > 0
+                  ? ` · ${overview?.summary.agentsOnline} agent online`
+                  : ""}
               </p>
             </div>
             <Link to="/databases" className="text-xs font-medium text-brand hover:underline">
@@ -365,9 +381,9 @@ export function DashboardPage() {
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th className="px-4 py-3 font-medium">Workflow</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Last run</th>
-                  <th className="px-4 py-3 font-medium">RTO</th>
+                  <th className="px-4 py-3 font-medium">Posture</th>
+                  <th className="px-4 py-3 font-medium">Last drill</th>
+                  <th className="px-4 py-3 font-medium">Recovery time</th>
                   <th className="px-4 py-3 font-medium">Finished</th>
                   <th className="px-4 py-3 font-medium text-right">Action</th>
                 </tr>
@@ -381,14 +397,26 @@ export function DashboardPage() {
                   </tr>
                 ) : !overview?.fleet.length ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center">
-                      <p className="text-slate-600">No databases yet.</p>
-                      <Link
-                        to="/databases/new"
-                        className="mt-2 inline-block text-sm font-medium text-brand hover:underline"
-                      >
-                        Add your first workflow →
-                      </Link>
+                    <td colSpan={6} className="px-4 py-14 text-center">
+                      <p className="font-medium text-slate-800">No workflows in your fleet yet</p>
+                      <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                        Import the AWS free-tier sample or register your own database to see restore
+                        posture here.
+                      </p>
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                        <Link
+                          to="/databases/new?sample=aws-freetier"
+                          className="inline-flex items-center gap-1 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          Quick start sample
+                        </Link>
+                        <Link
+                          to="/databases/new"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                        >
+                          Add database
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -410,15 +438,22 @@ export function DashboardPage() {
               <p className="mt-1 text-xs text-blue-800/80">
                 Complete setup so your first restore proof is inevitable.
               </p>
+              {!overview.onboarding.find((step) => step.id === "database")?.done && (
+                <Link
+                  to="/databases/new?sample=aws-freetier"
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-900 hover:bg-blue-100/60"
+                >
+                  Quick start: import AWS sample workflow
+                </Link>
+              )}
               <ul className="mt-4 space-y-2">
                 {overview.onboarding.map((step) => (
                   <li key={step.id}>
-                    <Link
-                      to={step.href}
+                    <div
                       className={`flex items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors ${
                         step.done
                           ? "text-emerald-800"
-                          : "bg-white text-slate-800 hover:bg-blue-100/50"
+                          : "bg-white text-slate-800"
                       }`}
                     >
                       {step.done ? (
@@ -426,9 +461,26 @@ export function DashboardPage() {
                       ) : (
                         <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-slate-300" />
                       )}
-                      <span className="flex-1">{step.label}</span>
-                      {!step.done && <ChevronRight size={14} className="text-slate-400" />}
-                    </Link>
+                      <Link
+                        to={step.href}
+                        className={`flex min-w-0 flex-1 items-center gap-2 ${
+                          step.done ? "" : "hover:text-brand"
+                        }`}
+                      >
+                        <span className="flex-1">{step.label}</span>
+                        {!step.done && <ChevronRight size={14} className="text-slate-400" />}
+                      </Link>
+                      {step.docsHref && (
+                        <a
+                          href={marketingLink(step.docsHref)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-[11px] font-medium text-blue-700 hover:underline"
+                        >
+                          Docs
+                        </a>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -445,11 +497,15 @@ export function DashboardPage() {
                 </li>
               ))}
             </ul>
-            {plan.id === "starter" && (
-              <p className="mt-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                Upgrade to <strong>Pro</strong> for more workflows, AWS fleet drills, and longer
-                evidence retention — when billing goes live.
-              </p>
+            {plan.id === "starter" && user?.role === "admin" && (
+              <button
+                type="button"
+                onClick={() => redirectToWebsiteBilling({ plan: "pro", upgrade: true })}
+                className="mt-4 w-full rounded-md bg-slate-50 px-3 py-2 text-left text-xs text-slate-600 hover:bg-slate-100"
+              >
+                Upgrade to <strong>Pro</strong> for more workflows, parallel drills, and longer
+                evidence retention →
+              </button>
             )}
           </div>
 

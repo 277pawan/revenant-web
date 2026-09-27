@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Calendar, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Calendar, Database, Pause, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
+import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimeText } from "../components/DateTimeText";
 import { PaginationBar } from "../components/PaginationBar";
@@ -250,14 +252,10 @@ export function SchedulesPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Schedules</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Automatic validation runs — pick a workflow, frequency, time, and timezone. No cron
-            syntax required.
-          </p>
-        </div>
+      <PageHeader
+        title="Schedules"
+        description="Run restore drills automatically — daily or weekly — without writing cron. Set it once and get proof every week."
+      >
         {canWrite && (
           <button
             type="button"
@@ -268,7 +266,7 @@ export function SchedulesPage() {
             New schedule
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {error && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -412,9 +410,31 @@ export function SchedulesPage() {
               </tr>
             ) : schedules.length === 0 ? (
               <tr>
-                <td colSpan={canWrite ? 6 : 5} className="px-4 py-12 text-center text-slate-500">
+                <td colSpan={canWrite ? 6 : 5} className="px-4 py-14 text-center">
                   <Calendar className="mx-auto mb-2 text-slate-300" size={32} />
-                  No schedules yet. Create one to run validations automatically.
+                  <p className="font-medium text-slate-800">No schedules yet</p>
+                  <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
+                    Pick a workflow and set a daily or weekly drill — no cron syntax required.
+                  </p>
+                  {canWrite && (
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={openCreateForm}
+                        className="inline-flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90"
+                      >
+                        <Plus size={16} />
+                        Create schedule
+                      </button>
+                      <Link
+                        to="/databases/new?sample=aws-freetier"
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+                      >
+                        <Database size={16} />
+                        Add a workflow first
+                      </Link>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : filteredSchedules.length === 0 ? (

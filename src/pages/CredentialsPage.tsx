@@ -39,6 +39,7 @@ export function CredentialsPage() {
   const [password, setPassword] = useState("");
   const [awsAccessKeyId, setAwsAccessKeyId] = useState("");
   const [awsSecretAccessKey, setAwsSecretAccessKey] = useState("");
+  const [awsSessionToken, setAwsSessionToken] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(
@@ -69,6 +70,7 @@ export function CredentialsPage() {
     setPassword("");
     setAwsAccessKeyId("");
     setAwsSecretAccessKey("");
+    setAwsSessionToken("");
   }
 
   function closeRotate() {
@@ -76,6 +78,7 @@ export function CredentialsPage() {
     setPassword("");
     setAwsAccessKeyId("");
     setAwsSecretAccessKey("");
+    setAwsSessionToken("");
   }
 
   async function onRotateConfirm() {
@@ -100,6 +103,7 @@ export function CredentialsPage() {
         await api.updateDatabase(rotateTarget.id, {
           awsAccessKeyId,
           awsSecretAccessKey,
+          ...(awsSessionToken.trim() ? { awsSessionToken } : {}),
         });
         toast.success("AWS keys updated", `Keys rotated for ${rotateTarget.name}.`);
       }

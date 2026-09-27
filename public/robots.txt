@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /
+
+# Private app — not for search indexing. Marketing site: https://revenant-verify-933e4.web.app

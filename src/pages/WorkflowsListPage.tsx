@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Play, RefreshCw, Search } from "lucide-react";
+import { ChevronRight, Database, FileCode2, Play, RefreshCw, Search } from "lucide-react";
 import { AppShell } from "../components/AppShell";
+import { PageHeader } from "../components/layout/PageHeader";
 import { StatusBadge } from "../components/workflow/StatusBadge";
 import { api } from "../lib/api";
 import {
@@ -110,32 +111,25 @@ export function WorkflowsListPage() {
 
   return (
     <AppShell>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Workflows
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Validation plans and their execution history
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link
-            to="/settings/validation-plans"
-            className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            + Create workflow
-          </Link>
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title="Restore drills"
+        description="Each workflow is a database plus validation plan. Run drills here, review pass/fail history, and download evidence."
+      >
+        <Link
+          to="/settings/validation-plans"
+          className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          + Create workflow
+        </Link>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+        >
+          <RefreshCw size={14} />
+          Refresh
+        </button>
+      </PageHeader>
 
       <div className="mb-4 flex flex-wrap gap-3">
         <div className="relative min-w-[200px] flex-1">
@@ -182,6 +176,40 @@ export function WorkflowsListPage() {
 
         {loading && services.length === 0 ? (
           <div className="h-48 animate-pulse bg-slate-100" />
+        ) : services.length === 0 ? (
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-brand">
+              <Play size={28} fill="currentColor" />
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900">No workflows yet</h2>
+            <p className="mt-2 max-w-md text-sm text-slate-600">
+              Workflows appear when you register a database and save a validation plan. Start with
+              the onboarding checklist on your dashboard, or jump in below.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Link
+                to="/databases/new?sample=aws-freetier"
+                className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Database size={16} />
+                Quick start: AWS sample
+              </Link>
+              <Link
+                to="/databases/new"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+              >
+                <Database size={16} />
+                Add database
+              </Link>
+              <Link
+                to="/settings/validation-plans"
+                className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"
+              >
+                <FileCode2 size={16} />
+                Create validation plan
+              </Link>
+            </div>
+          </div>
         ) : filtered.length === 0 ? (
           <p className="px-4 py-12 text-center text-sm text-slate-500">
             No workflows match your filters.

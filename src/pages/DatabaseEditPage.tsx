@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, Lock } from "lucide-react";
 import { AppShell } from "../components/AppShell";
-import { Field, Input, Select, Textarea } from "../components/ui/Field";
+import { Field, Input, SecretInput, Select, Textarea } from "../components/ui/Field";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { roleHasPermission } from "../types/api";
@@ -65,6 +65,7 @@ export function DatabaseEditPage() {
           recoverySandboxInstanceClass: database.recoverySandboxInstanceClass ?? "",
           awsAccessKeyId: "",
           awsSecretAccessKey: "",
+          awsSessionToken: "",
         });
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
@@ -82,6 +83,7 @@ export function DatabaseEditPage() {
       const password = values.password.trim();
       const awsKey = values.awsAccessKeyId.trim();
       const awsSecret = values.awsSecretAccessKey.trim();
+      const awsSessionToken = values.awsSessionToken.trim();
 
       if (
         values.recoveryMode === "aws-rds" &&
@@ -97,7 +99,10 @@ export function DatabaseEditPage() {
         name: values.name.trim(),
         engine: "postgres",
         recoveryMode: values.recoveryMode,
-        host: values.recoveryMode === "direct" ? values.host.trim() || null : null,
+        host:
+          values.recoveryMode === "direct" || values.recoveryMode === "aws-rds"
+            ? values.host.trim() || null
+            : null,
         port: values.port,
         databaseName: values.databaseName.trim() || null,
         username: values.username.trim() || null,
@@ -112,7 +117,13 @@ export function DatabaseEditPage() {
             : null,
         description: values.description.trim() || null,
         ...(password ? { password } : {}),
-        ...(awsKey && awsSecret ? { awsAccessKeyId: awsKey, awsSecretAccessKey: awsSecret } : {}),
+        ...(awsKey && awsSecret
+          ? {
+              awsAccessKeyId: awsKey,
+              awsSecretAccessKey: awsSecret,
+              ...(awsSessionToken ? { awsSessionToken } : {}),
+            }
+          : {}),
       });
       navigate("/databases");
     } catch (err) {
@@ -177,6 +188,24 @@ export function DatabaseEditPage() {
 
             {recoveryMode === "aws-rds" && (
               <>
+                <Field
+                  label="RDS endpoint (host)"
+                  htmlFor="host"
+                  required
+                  hint="AWS Console → RDS → database-1 → Endpoint. Required for full drill snapshot step."
+                  error={errors.host?.message}
+                >
+                  <Input
+                    id="host"
+                    className="font-mono text-xs"
+                    placeholder="database-1.xxxx.eu-west-2.rds.amazonaws.com"
+                    invalid={!!errors.host}
+                    {...register("host")}
+                  />
+                </Field>
+                <Field label="Port" htmlFor="port" required error={errors.port?.message}>
+                  <Input id="port" type="number" invalid={!!errors.port} {...register("port")} />
+                </Field>
                 <Field
                   label="RDS instance identifier"
                   htmlFor="rdsSourceIdentifier"
@@ -257,10 +286,10 @@ export function DatabaseEditPage() {
                 hint="Leave blank to keep current encrypted password."
                 error={errors.password?.message}
               >
-                <Input
+                <SecretInput
                   id="password"
-                  type="password"
                   autoComplete="new-password"
+                  placeholder={hasCredentials ? "••••••••" : ""}
                   invalid={!!errors.password}
                   {...register("password")}
                 />
@@ -268,36 +297,68 @@ export function DatabaseEditPage() {
             </div>
 
             {recoveryMode === "aws-rds" && (
-              <>
-                <Field
-                  label="AWS access key ID"
-                  htmlFor="awsAccessKeyId"
-                  hint={hasAwsCredentials ? "Leave blank to keep current keys" : "Required for restore drill"}
-                  error={errors.awsAccessKeyId?.message}
-                >
-                  <Input
-                    id="awsAccessKeyId"
-                    className="font-mono text-xs"
-                    autoComplete="off"
-                    invalid={!!errors.awsAccessKeyId}
-                    {...register("awsAccessKeyId")}
-                  />
-                </Field>
-                <Field
-                  label="AWS secret access key"
-                  htmlFor="awsSecretAccessKey"
-                  error={errors.awsSecretAccessKey?.message}
-                >
-                  <Input
-                    id="awsSecretAccessKey"
-                    type="password"
-                    className="font-mono text-xs"
-                    autoComplete="new-password"
-                    invalid={!!errors.awsSecretAccessKey}
-                    {...register("awsSecretAccessKey")}
-                  />
-                </Field>
-              </>
+              <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-800">AWS credentials</p>
+                  {hasAwsCredentials ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800 ring-1 ring-emerald-200">
+                      <Lock size={10} />
+                      Keys stored — leave blank unless rotating
+                    </span>
+                  ) : (
+                    <span className="text-xs text-amber-700">Required before your first restore drill</span>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="AWS access key ID"
+                    htmlFor="awsAccessKeyId"
+                    required={!hasAwsCredentials}
+                    hint={hasAwsCredentials ? "Optional — enter only to rotate" : undefined}
+                    error={errors.awsAccessKeyId?.message}
+                  >
+                    <Input
+                      id="awsAccessKeyId"
+                      className="font-mono text-xs"
+                      autoComplete="off"
+                      placeholder={hasAwsCredentials ? "AKIA…" : ""}
+                      invalid={!!errors.awsAccessKeyId}
+                      {...register("awsAccessKeyId")}
+                    />
+                  </Field>
+                  <Field
+                    label="AWS secret access key"
+                    htmlFor="awsSecretAccessKey"
+                    required={!hasAwsCredentials}
+                    hint={hasAwsCredentials ? "Optional — enter only to rotate" : undefined}
+                    error={errors.awsSecretAccessKey?.message}
+                  >
+                    <SecretInput
+                      id="awsSecretAccessKey"
+                      className="font-mono text-xs"
+                      autoComplete="new-password"
+                      placeholder={hasAwsCredentials ? "••••••••" : ""}
+                      invalid={!!errors.awsSecretAccessKey}
+                      {...register("awsSecretAccessKey")}
+                    />
+                  </Field>
+                  <Field
+                    label="AWS session token"
+                    htmlFor="awsSessionToken"
+                    hint={hasAwsCredentials ? "Optional — used for temporary credentials" : "Optional for temporary IAM credentials"}
+                    error={errors.awsSessionToken?.message}
+                  >
+                    <SecretInput
+                      id="awsSessionToken"
+                      className="font-mono text-xs"
+                      autoComplete="off"
+                      placeholder={hasAwsCredentials ? "Optional" : ""}
+                      invalid={!!errors.awsSessionToken}
+                      {...register("awsSessionToken")}
+                    />
+                  </Field>
+                </div>
+              </div>
             )}
 
             {recoveryMode === "direct" && (
