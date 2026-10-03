@@ -240,7 +240,7 @@ export interface RegisterRequest {
   password: string;
 }
 
-export type DatabaseEngine = "postgres";
+export type DatabaseEngine = "postgres" | "mysql";
 export type SslMode = "require" | "prefer" | "disable";
 export type RecoveryMode = "direct" | "aws-rds";
 
@@ -258,6 +258,9 @@ export interface DatabaseResource {
   rdsSourceIdentifier: string | null;
   recoveryUseFreetier: boolean;
   recoverySandboxInstanceClass: string | null;
+  recoveryDrillsEnabled: boolean;
+  recoveryMaxLifetimeMinutes: number | null;
+  recoveryCleanupCustomerSnapshots: boolean;
   description: string | null;
   hasCredentials: boolean;
   hasAwsCredentials: boolean;
@@ -266,6 +269,16 @@ export interface DatabaseResource {
   validationPlanVersion: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AwsSourceStatus {
+  state: "available" | "unavailable" | "missing" | "not_configured" | "unknown";
+  rdsStatus: string | null;
+  availableSnapshotCount: number | null;
+  latestSnapshotIdentifier: string | null;
+  latestSnapshotCreatedAt: string | null;
+  checkedAt: string;
+  message: string | null;
 }
 
 export interface CreateDatabaseRequest {
@@ -282,6 +295,9 @@ export interface CreateDatabaseRequest {
   rdsSourceIdentifier?: string;
   recoveryUseFreetier?: boolean;
   recoverySandboxInstanceClass?: string;
+  recoveryDrillsEnabled?: boolean;
+  recoveryMaxLifetimeMinutes?: number | null;
+  recoveryCleanupCustomerSnapshots?: boolean;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
   awsSessionToken?: string;
@@ -302,6 +318,9 @@ export interface UpdateDatabaseRequest {
   rdsSourceIdentifier?: string | null;
   recoveryUseFreetier?: boolean;
   recoverySandboxInstanceClass?: string | null;
+  recoveryDrillsEnabled?: boolean;
+  recoveryMaxLifetimeMinutes?: number | null;
+  recoveryCleanupCustomerSnapshots?: boolean;
   awsAccessKeyId?: string;
   awsSecretAccessKey?: string;
   awsSessionToken?: string;
@@ -423,6 +442,11 @@ export interface JobResource {
   triggeredByUserId: string | null;
   errorMessage: string | null;
   rtoSeconds: number | null;
+  runnerProgress?: {
+    stage: string;
+    message: string;
+    updatedAt: string;
+  } | null;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
@@ -446,6 +470,7 @@ export interface JobDetailResource extends JobResource {
 export interface CreateJobRequest {
   databaseId: string;
   drillKind?: "verify" | "full";
+  recoveryPointId?: string;
 }
 
 export interface ScheduleResource {
@@ -812,4 +837,3 @@ export interface OrgSubscriptionSummary {
     directPostgres: boolean;
   };
 }
-

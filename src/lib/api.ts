@@ -1,6 +1,7 @@
 import type {
   AuditEventResource,
   AuthUser,
+  AwsSourceStatus,
   CreateDatabaseRequest,
   CreateJobRequest,
   CreateScheduleRequest,
@@ -208,6 +209,10 @@ export const api = {
     search?: string
   ): Promise<Paginated<DatabaseResource>> {
     return request(withQuery("/api/v1/databases", { page, pageSize, search }));
+  },
+
+  getAwsSourceStatus(databaseId: string): Promise<{ status: AwsSourceStatus }> {
+    return request(`/api/v1/databases/${databaseId}/aws-status`);
   },
 
   getDatabaseReadiness(

@@ -14,6 +14,7 @@ import {
   Users,
   Building2,
   Shield,
+  SlidersHorizontal,
   Bell,
   ScrollText,
   KeyRound,
@@ -56,6 +57,7 @@ const navGroups: NavGroup[] = [
       { to: "/schedules", label: "Schedules", icon: Calendar },
       { to: "/evidence", label: "Evidence Vault", icon: FileCheck },
       { to: "/recovery-instances", label: "Recovered instances", icon: History },
+      { to: "/recovery-operations", label: "Recovery operations", icon: SlidersHorizontal },
     ],
   },
   {
@@ -92,7 +94,7 @@ const resourceLinks: Array<{
 
 const sidebarGroupRoutes: Record<string, string[]> = {
   overview: ["/"],
-  "recovery-operations": ["/workflows", "/schedules", "/evidence", "/recovery-instances"],
+  "recovery-operations": ["/workflows", "/schedules", "/evidence", "/recovery-instances", "/recovery-operations"],
   infrastructure: ["/databases"],
   settings: [
     "/settings/general",
@@ -114,6 +116,7 @@ function NavItemLink({ item }: { item: NavItem }) {
     "/schedules": "nav-schedules",
     "/evidence": "nav-evidence",
     "/recovery-instances": "nav-recovered-instances",
+    "/recovery-operations": "nav-recovery-operations",
     "/databases": "nav-databases",
     "/settings/validation-plans": "nav-validation-plans",
     "/settings/webhooks": "nav-webhooks",

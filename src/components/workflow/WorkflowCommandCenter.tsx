@@ -17,10 +17,12 @@ type WorkflowCommandCenterProps = {
   readiness: RecoveryReadinessResource | null;
   lastJob: JobResource | null | undefined;
   canRun: boolean;
+  canRunFull: boolean;
+  sourceStatusMessage?: string | null;
   canDownload: boolean;
   running: boolean;
   awsMode: boolean;
-  onRunDrill: (kind: "full" | "verify") => void;
+  onRunDrill: () => void;
 };
 
 export function WorkflowCommandCenter({
@@ -28,6 +30,8 @@ export function WorkflowCommandCenter({
   readiness,
   lastJob,
   canRun,
+  canRunFull,
+  sourceStatusMessage,
   canDownload,
   running,
   awsMode,
@@ -69,24 +73,15 @@ export function WorkflowCommandCenter({
           {canRun && (
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex flex-wrap justify-end gap-2">
-                {awsMode && (
-                  <button
-                    type="button"
-                    disabled={running}
-                    onClick={() => onRunDrill("verify")}
-                    title="Restore the latest existing AWS snapshot into a sandbox and run checks — does not create a new snapshot"
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    Verify snapshot
-                  </button>
-                )}
                 <button
                   type="button"
-                  disabled={running}
-                  onClick={() => onRunDrill("full")}
+                  disabled={running || !canRunFull}
+                  onClick={onRunDrill}
                   title={
-                    awsMode
-                      ? "Check live RDS → create new snapshot → restore sandbox → validate → cleanup"
+                    !canRunFull
+                      ? sourceStatusMessage ?? "A full drill requires an available AWS source RDS instance."
+                      : awsMode
+                      ? "Check live RDS → create a new manual snapshot (retained in AWS) → restore a temporary RDS database → validate → request cleanup. AWS may take an hour or more."
                       : "Run validation checks against the live database"
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -95,12 +90,25 @@ export function WorkflowCommandCenter({
                   {running ? "Queuing…" : "Run restore drill"}
                 </button>
               </div>
+              {awsMode && !canRunFull && (
+                <p role="status" className="max-w-md text-right text-xs text-amber-800">
+                  {sourceStatusMessage ?? "Checking AWS source status…"}{" "}
+                  <Link
+                    to={`/workflows/${service.databaseId}?tab=recovery-points`}
+                    className="font-medium underline"
+                  >
+                    Open Recovery Points
+                  </Link>
+                </p>
+              )}
               {awsMode && (
                 <p className="max-w-md text-right text-[11px] leading-snug text-slate-500">
-                  <strong className="font-medium text-slate-600">Verify snapshot</strong> uses your
-                  latest AWS backup.{" "}
+                  <strong className="font-medium text-slate-600">Verify snapshot</strong> is
+                  available on each recovery-point card and restores that specific snapshot to a
+                  temporary RDS database for validation.{" "}
                   <strong className="font-medium text-slate-600">Full drill</strong> checks live RDS
-                  first — if checks fail, no snapshot is created.
+                  first — if checks fail, no snapshot is created. A full drill creates a new AWS
+                  snapshot that remains after the temporary database is deleted.
                 </p>
               )}
             </div>

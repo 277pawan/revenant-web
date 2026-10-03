@@ -2,7 +2,7 @@
 
 React dashboard for **Revenant Cloud** — the control plane where teams register databases, run restore drills, collect evidence, and prove backups actually recover before an outage.
 
-> **Revenant** answers one question: *did your last backup really restore?*
+> **Revenant** answers one question: _did your last backup really restore?_
 
 **Full product status & roadmap:** [REVENANT_STATUS_AND_ROADMAP.md](../revenant-cloud/docs/REVENANT_STATUS_AND_ROADMAP.md)
 
@@ -12,28 +12,28 @@ React dashboard for **Revenant Cloud** — the control plane where teams registe
 
 ### ✅ Done — launch track
 
-| # | Item |
-|---|------|
-| 1 | **Production** — Cloud Run API CI/CD, Firebase frontends, live Razorpay, prod DB migrations |
-| 2 | **Starter billing** — ₹1 autopay + ₹499/mo subscription, 30-day trial |
-| 3 | **Pro** — ₹1,499/mo plan, upgrade path + Pro signup from pricing |
-| — | Fund us (`/coffee`) one-time Razorpay, OAuth, password reset, plan API limits |
+| #   | Item                                                                                        |
+| --- | ------------------------------------------------------------------------------------------- |
+| 1   | **Production** — Cloud Run API CI/CD, Firebase frontends, live Razorpay, prod DB migrations |
+| 2   | **Starter billing** — ₹1 autopay + ₹499/mo subscription, 30-day trial                       |
+| 3   | **Pro** — ₹1,499/mo plan, upgrade path + Pro signup from pricing                            |
+| —   | Fund us (`/coffee`) one-time Razorpay, OAuth, password reset, plan API limits               |
 
 ### 🔨 Remaining — do next (steps 4 & 5)
 
-| # | Item | What to build |
-|---|------|----------------|
+| #     | Item                      | What to build                                                                                                                                                       |
+| ----- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **4** | **Billing settings page** | Cloud **Settings → Plan & billing**: plan name, trial days left, subscription status, link to upgrade / marketing billing. API: `GET /api/v1/billing/subscription`. |
-| **5** | **Onboarding polish** | Sample workflow template (one-click first drill), empty-state CTAs, optional `ALLOW_OPEN_REGISTRATION=false` for invite-only. |
+| **5** | **Onboarding polish**     | Sample workflow template (one-click first drill), empty-state CTAs, optional `ALLOW_OPEN_REGISTRATION=false` for invite-only.                                       |
 
 ### After 4 & 5 — what Revenant builds next
 
-| Phase | Focus |
-|-------|--------|
-| **Habit** | Weekly digest email, Slack drill alerts, RTO breach notifications |
+| Phase                     | Focus                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| **Habit**                 | Weekly digest email, Slack drill alerts, RTO breach notifications               |
 | **Recovery Intelligence** | RTO/RPO contracts, app-level smoke after restore, readiness passport for audits |
-| **DB & providers** | HTTP app checks → Redis/S3 deps → MySQL → GCP Cloud SQL (see roadmap doc) |
-| **Scale** | Enterprise SSO, private-VPC agent, custom domains (`app.revenant.dev`) |
+| **DB & providers**        | HTTP app checks → Redis/S3 deps → MySQL → GCP Cloud SQL (see roadmap doc)       |
+| **Scale**                 | Enterprise SSO, private-VPC agent, custom domains (`app.revenant.dev`)          |
 
 **Target user flow:** Pricing → register → ₹1 on `/billing` → cloud → first green drill in &lt;30 min → weekly schedule → evidence PDF for the boss → upgrade to Pro when fleet grows.
 
@@ -45,12 +45,12 @@ Details, mermaid diagram, and SQL testing helpers: **[REVENANT_STATUS_AND_ROADMA
 
 Revenant is split across several repos that work together:
 
-| Repo | Role | Stack | Production |
-|------|------|-------|------------|
-| **[revenant-cloud-web](.)** (this repo) | Product dashboard — login, fleet, workflows, evidence | React 19, Vite, Tailwind | Firebase Hosting → `revenant-cloud-web.web.app` |
-| **[revenant-cloud](../revenant-cloud)** | REST API, auth, jobs, schedules, webhooks | Fastify, Drizzle, PostgreSQL | Google Cloud Run → `revenant-api-*.asia-south1.run.app` |
-| **[revenant-website](../revenant-website)** | Marketing site, docs, pricing, contact | React 19, Vite, Tailwind | Firebase → `revenant-verify-933e4.web.app` |
-| **[revenant-cli](../revenant-cli)** | CLI restore-validation engine (`revenant verify`) | Go | Runs locally or in customer CI |
+| Repo                                        | Role                                                  | Stack                        | Production                                              |
+| ------------------------------------------- | ----------------------------------------------------- | ---------------------------- | ------------------------------------------------------- |
+| **[revenant-cloud-web](.)** (this repo)     | Product dashboard — login, fleet, workflows, evidence | React 19, Vite, Tailwind     | Firebase Hosting → `revenant-cloud-web.web.app`         |
+| **[revenant-cloud](../revenant-cloud)**     | REST API, auth, jobs, schedules, webhooks             | Fastify, Drizzle, PostgreSQL | Google Cloud Run → `revenant-api-*.asia-south1.run.app` |
+| **[revenant-website](../revenant-website)** | Marketing site, docs, pricing, contact                | React 19, Vite, Tailwind     | Firebase → `revenant-verify-933e4.web.app`              |
+| **[revenant-cli](../revenant-cli)**         | CLI restore-validation engine (`revenant verify`)     | Go                           | Runs locally or in customer CI                          |
 
 ```
 ┌─────────────────────┐     ┌─────────────────────┐
@@ -108,19 +108,19 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Shipped capabilities (dashboard)
 
-| Area | What users get |
-|------|----------------|
-| **Proof Composer** | AI-assisted `revenant.yaml` from schema paste or DB introspection (Mistral / OpenRouter on API) |
-| **RBAC** | `admin` · `executor` · `viewer` — UI hides actions the role cannot perform |
-| **Team invites** | Email invite → shareable link → accept on `/login?invite=…` |
-| **Trial & billing UX** | `SubscriptionBanner` — trial countdown, paused state, link to marketing `/pricing` |
-| **Drill modes** | `verify` (checks only) or `full` (AWS snapshot restore + verify) per workflow |
-| **Live runs** | Run detail auto-refreshes while job is active; per-check results + pipeline graph |
-| **Evidence export** | Download signed JSON + PDF certificate from run detail and evidence vault |
-| **Integrations** | Slack incoming webhook, Gmail/SMTP alerts, signed custom HTTP webhooks |
-| **Audit trail** | Searchable, paginated org audit log with JSON detail drawer |
-| **Marketing cross-links** | Sidebar + login footer → docs, CLI, GitHub Action, marketing site (`lib/site.ts`) |
-| **OAuth handoff** | Marketing site can sign in and redirect here with `#token=` on `/auth/oauth/complete` |
+| Area                      | What users get                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Proof Composer**        | AI-assisted `revenant.yaml` from schema paste or DB introspection (Mistral / OpenRouter on API) |
+| **RBAC**                  | `admin` · `executor` · `viewer` — UI hides actions the role cannot perform                      |
+| **Team invites**          | Email invite → shareable link → accept on `/login?invite=…`                                     |
+| **Trial & billing UX**    | `SubscriptionBanner` — trial countdown, paused state, link to marketing `/pricing`              |
+| **Drill modes**           | `verify` (checks only) or `full` (AWS snapshot restore + verify) per workflow                   |
+| **Live runs**             | Run detail auto-refreshes while job is active; per-check results + pipeline graph               |
+| **Evidence export**       | Download signed JSON + PDF certificate from run detail and evidence vault                       |
+| **Integrations**          | Slack incoming webhook, Gmail/SMTP alerts, signed custom HTTP webhooks                          |
+| **Audit trail**           | Searchable, paginated org audit log with JSON detail drawer                                     |
+| **Marketing cross-links** | Sidebar + login footer → docs, CLI, GitHub Action, marketing site (`lib/site.ts`)               |
+| **OAuth handoff**         | Marketing site can sign in and redirect here with `#token=` on `/auth/oauth/complete`           |
 
 ---
 
@@ -128,17 +128,18 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Authentication
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/login` | `LoginPage` | Email/password, Google & GitHub OAuth (popup flow), invite acceptance |
-| `/register` | *(via login)* | Create organization (Starter plan by default) |
-| `/forgot-password` | `ForgotPasswordPage` | Email reset link |
-| `/reset-password` | `ResetPasswordPage` | Set new password from token |
-| `/auth/oauth/complete` | `OAuthCompletePage` | Popup callback — receives JWT, posts to opener |
+| Route                  | Page                 | Description                                                           |
+| ---------------------- | -------------------- | --------------------------------------------------------------------- |
+| `/login`               | `LoginPage`          | Email/password, Google & GitHub OAuth (popup flow), invite acceptance |
+| `/register`            | _(via login)_        | Create organization (Starter plan by default)                         |
+| `/forgot-password`     | `ForgotPasswordPage` | Email reset link                                                      |
+| `/reset-password`      | `ResetPasswordPage`  | Set new password from token                                           |
+| `/auth/oauth/complete` | `OAuthCompletePage`  | Popup callback — receives JWT, posts to opener                        |
 
 **Auth components:** `AuthBrandPanel`, `OAuthButtons`, `OrbitingTeamOrbit`, `BackupResurrection`, `VerifyTerminal`, `PasswordField`, `AuthSuccessOverlay`.
 
 **How auth works:**
+
 - API returns JWT in login/OAuth response → stored in `localStorage` (`revenant_token`).
 - API also sets httpOnly session cookie when applicable.
 - `lib/auth.tsx` wraps `/api/v1/me` for session restore.
@@ -151,9 +152,9 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Dashboard
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/` | `DashboardPage` | Fleet health (healthy / at risk / not tested), RTO trend chart, KPI cards, quick “run full drill” CTA |
+| Route | Page            | Description                                                                                           |
+| ----- | --------------- | ----------------------------------------------------------------------------------------------------- |
+| `/`   | `DashboardPage` | Fleet health (healthy / at risk / not tested), RTO trend chart, KPI cards, quick “run full drill” CTA |
 
 **Components:** `RtoTrendChart`, `SubscriptionBanner`, plan-aware upsell, fleet table with last RTO and run links.
 
@@ -163,11 +164,11 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Databases
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/databases` | `DatabasesPage` | List registered databases, connection status, recovery mode |
-| `/databases/new` | `DatabaseWizardPage` | Multi-step wizard — engine, credentials, AWS RDS, validation plan |
-| `/databases/:id/edit` | `DatabaseEditPage` | Edit connection, credentials, plan assignment |
+| Route                 | Page                 | Description                                                       |
+| --------------------- | -------------------- | ----------------------------------------------------------------- |
+| `/databases`          | `DatabasesPage`      | List registered databases, connection status, recovery mode       |
+| `/databases/new`      | `DatabaseWizardPage` | Multi-step wizard — engine, credentials, AWS RDS, validation plan |
+| `/databases/:id/edit` | `DatabaseEditPage`   | Edit connection, credentials, plan assignment                     |
 
 **Components:** `DatabasePlanPicker`, `WizardStepper`, `SchemaPasteGuide`, `Field`, `AccordionSection`.
 
@@ -181,11 +182,11 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Workflows & runs
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/workflows` | `WorkflowsListPage` | All databases with latest run status |
-| `/workflows/:databaseId` | `WorkflowDetailPage` | Pipeline view, run history, trigger **verify** or **full** drill manually |
-| `/workflows/:databaseId/runs/:jobId` | `RunDetailPage` | Live run — checks, RTO, JSON/PDF evidence download, React Flow restore graph |
+| Route                                | Page                 | Description                                                                  |
+| ------------------------------------ | -------------------- | ---------------------------------------------------------------------------- |
+| `/workflows`                         | `WorkflowsListPage`  | All databases with latest run status                                         |
+| `/workflows/:databaseId`             | `WorkflowDetailPage` | Pipeline view, run history, trigger **verify** or **full** drill manually    |
+| `/workflows/:databaseId/runs/:jobId` | `RunDetailPage`      | Live run — checks, RTO, JSON/PDF evidence download, React Flow restore graph |
 
 **Components:** `WorkflowPipeline`, `RestorePipelineGraph`, `JobCheckList`, `StatusBadge`, `jobStatus`, `YamlEditor` (Monaco).
 
@@ -197,8 +198,8 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Schedules
 
-| Route | Page | Description |
-|-------|------|-------------|
+| Route        | Page            | Description                                               |
+| ------------ | --------------- | --------------------------------------------------------- |
 | `/schedules` | `SchedulesPage` | Cron schedules per database — auto-enqueue restore drills |
 
 **Components:** `ScheduleTimingFields`, `WorkflowPicker`.
@@ -207,24 +208,24 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 ### Evidence vault
 
-| Route | Page | Description |
-|-------|------|-------------|
+| Route       | Page                | Description                                                            |
+| ----------- | ------------------- | ---------------------------------------------------------------------- |
 | `/evidence` | `EvidenceVaultPage` | Archived proof artifacts — PDF certificates + JSON, filter by database |
 
 ---
 
 ### Settings
 
-| Route | Page | Description |
-|-------|------|-------------|
-| `/settings/general` | `GeneralSettingsPage` | Org name, plan & subscription overview |
-| `/settings/credentials` | `CredentialsPage` | Encrypted DB passwords & AWS keys — rotate without viewing secrets |
-| API Tokens | — | Coming soon (sidebar placeholder) |
-| `/settings/validation-plans` | `ValidationPlansPage` | Reusable YAML templates + **Proof Composer** side panel |
-| `/settings/team` | `TeamPage` | Members, roles, email invites (copy link), remove member |
-| `/settings/runners` | `RunnersPage` | Self-hosted agent (**Pro+ only**) — issue token, `docker run` snippet with `VITE_AGENT_IMAGE` |
-| `/settings/webhooks` | `WebhooksPage` | Slack, Gmail/SMTP email, signed HTTP — per-event subscriptions |
-| `/settings/audit-log` | `AuditLogPage` | Searchable audit log, pagination, detail dialog |
+| Route                        | Page                  | Description                                                                                   |
+| ---------------------------- | --------------------- | --------------------------------------------------------------------------------------------- |
+| `/settings/general`          | `GeneralSettingsPage` | Org name, plan & subscription overview                                                        |
+| `/settings/credentials`      | `CredentialsPage`     | Encrypted DB passwords & AWS keys — rotate without viewing secrets                            |
+| API Tokens                   | —                     | Coming soon (sidebar placeholder)                                                             |
+| `/settings/validation-plans` | `ValidationPlansPage` | Reusable YAML templates + **Proof Composer** side panel                                       |
+| `/settings/team`             | `TeamPage`            | Members, roles, email invites (copy link), remove member                                      |
+| `/settings/runners`          | `RunnersPage`         | Self-hosted agent (**Pro+ only**) — issue token, `docker run` snippet with `VITE_AGENT_IMAGE` |
+| `/settings/webhooks`         | `WebhooksPage`        | Slack, Gmail/SMTP email, signed HTTP — per-event subscriptions                                |
+| `/settings/audit-log`        | `AuditLogPage`        | Searchable audit log, pagination, detail dialog                                               |
 
 **Components:** `WebhookEventPicker`, `IntegrationProviderIcon`, `CustomHttpGuide`, `AuditEventDetailDialog`, `PaginationBar`, `TableSearchBar`, `ConfirmDialog`.
 
@@ -232,61 +233,61 @@ Plans (**Starter / Pro / Enterprise**) gate parallel drills, self-hosted agents,
 
 AI-assisted validation YAML — calls API `composeValidationYaml` when `MISTRAL_API_KEY` (or OpenRouter) is configured on the backend.
 
-| Piece | Role |
-|-------|------|
-| `ProofComposer` | Layer toggles (schema, FKs, row counts, freshness, indexes, golden queries) |
+| Piece              | Role                                                                         |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `ProofComposer`    | Layer toggles (schema, FKs, row counts, freshness, indexes, golden queries)  |
 | `SchemaPasteGuide` | Paste `information_schema` / `pg_dump --schema-only` output or upload `.sql` |
-| `YamlEditor` | Monaco editor — review composed YAML before save |
-| `AccordionSection` | Split left panel: plans list vs composer |
+| `YamlEditor`       | Monaco editor — review composed YAML before save                             |
+| `AccordionSection` | Split left panel: plans list vs composer                                     |
 
 Shows “off” when composer is disabled on API; manual YAML editing always works.
 
 ### Roles & permissions (`types/api.ts`)
 
-| Role | Typical use |
-|------|-------------|
-| **admin** | Full org control — databases, plans, webhooks, team, audit |
+| Role         | Typical use                                                          |
+| ------------ | -------------------------------------------------------------------- |
+| **admin**    | Full org control — databases, plans, webhooks, team, audit           |
 | **executor** | Run drills, edit validation plans, schedules — no team/webhook admin |
-| **viewer** | Read-only — dashboards, evidence, run history |
+| **viewer**   | Read-only — dashboards, evidence, run history                        |
 
 UI gates buttons with `roleHasPermission()` (e.g. `jobs:run`, `databases:write`, `team:manage`).
 
 ### Plans & gating (`lib/plans.ts`)
 
-| Plan | Managed AWS drills | Parallel drills | Self-hosted agent | Trial |
-|------|-------------------|-----------------|-------------------|-------|
-| **Starter** | ✅ 1 workflow | 1 | ❌ | 30 days |
-| **Pro** | ✅ up to 10 | 3 | ✅ (private VPC) | — |
-| **Enterprise** | ✅ fair use | unlimited | ✅ | — |
+| Plan           | Managed AWS drills | Parallel drills | Self-hosted agent | Trial   |
+| -------------- | ------------------ | --------------- | ----------------- | ------- |
+| **Starter**    | ✅ 1 workflow      | 1               | ❌                | 30 days |
+| **Pro**        | ✅ up to 10        | 3               | ✅ (private VPC)  | —       |
+| **Enterprise** | ✅ fair use        | unlimited       | ✅                | —       |
 
 `SubscriptionBanner` surfaces trial days left or “subscribe on website”. `RunnersPage` hidden unless `planAllowsSelfHostedAgent()`.
 
 ### Integrations (`WebhooksPage` + `lib/integrations.ts`)
 
-| Provider | Config in UI | Events |
-|----------|--------------|--------|
-| **Slack** | Incoming webhook URL | `job.pass`, `job.fail`, `job.error` |
-| **Email** | Gmail + app password, recipient list | Same job events + weekly digest (API) |
-| **HTTP** | URL + signing secret (`X-Revenant-Signature`) | Same — see `CustomHttpGuide` |
+| Provider  | Config in UI                                  | Events                                |
+| --------- | --------------------------------------------- | ------------------------------------- |
+| **Slack** | Incoming webhook URL                          | `job.pass`, `job.fail`, `job.error`   |
+| **Email** | Gmail + app password, recipient list          | Same job events + weekly digest (API) |
+| **HTTP**  | URL + signing secret (`X-Revenant-Signature`) | Same — see `CustomHttpGuide`          |
 
 ---
 
 ## Shared UI & infrastructure
 
-| Area | Location | Notes |
-|------|----------|-------|
-| Layout | `AppShell.tsx` | Dark sidebar, plan badge, main + settings nav |
-| Toasts | `toast/ToastProvider.tsx` | Success / error / info notifications |
-| Forms | `react-hook-form` + `zod` | e.g. `lib/forms/database.schema.ts` |
-| API client | `lib/api.ts` | All `/api/v1/*` calls, Bearer token, `credentials: include` |
-| Types | `types/api.ts` | Mirror of `revenant-cloud/packages/shared` |
-| Plans | `lib/plans.ts` | Starter / Pro / Enterprise definitions for UI |
-| Site URLs | `lib/site.ts`, `lib/env.defaults.ts` | API, app, marketing links — production defaults baked in |
-| Integrations copy | `lib/integrations.ts` | Provider labels and setup hints |
-| Webhook events | `lib/webhook-events.ts` | Human labels for `job.pass` / `job.fail` / `job.error` |
-| Workflow helpers | `lib/workflow.ts` | Slugs, duration formatting |
-| Audit labels | `lib/audit.ts` | Audit action display names |
-| Datetime | `lib/datetime.ts`, `DateTimeText.tsx` | Consistent timestamps |
+| Area              | Location                              | Notes                                                       |
+| ----------------- | ------------------------------------- | ----------------------------------------------------------- |
+| Layout            | `AppShell.tsx`                        | Dark sidebar, plan badge, main + settings nav               |
+| Toasts            | `toast/ToastProvider.tsx`             | Success / error / info notifications                        |
+| Forms             | `react-hook-form` + `zod`             | e.g. `lib/forms/database.schema.ts`                         |
+| API client        | `lib/api.ts`                          | All `/api/v1/*` calls, Bearer token, `credentials: include` |
+| Types             | `types/api.ts`                        | Mirror of `revenant-cloud/packages/shared`                  |
+| Plans             | `lib/plans.ts`                        | Starter / Pro / Enterprise definitions for UI               |
+| Site URLs         | `lib/site.ts`, `lib/env.defaults.ts`  | API, app, marketing links — production defaults baked in    |
+| Integrations copy | `lib/integrations.ts`                 | Provider labels and setup hints                             |
+| Webhook events    | `lib/webhook-events.ts`               | Human labels for `job.pass` / `job.fail` / `job.error`      |
+| Workflow helpers  | `lib/workflow.ts`                     | Slugs, duration formatting                                  |
+| Audit labels      | `lib/audit.ts`                        | Audit action display names                                  |
+| Datetime          | `lib/datetime.ts`, `DateTimeText.tsx` | Consistent timestamps                                       |
 
 ---
 
@@ -294,22 +295,23 @@ UI gates buttons with `roleHasPermission()` (e.g. `jobs:run`, `databases:write`,
 
 Separate repo — public-facing, dark theme, same API for auth.
 
-| Route | Page | Purpose |
-|-------|------|---------|
-| `/` | `HomePage` | Hero, features, demo, CLI showcase, pricing preview |
-| `/pricing` | `PricingPage` | Starter / Pro / Enterprise |
-| `/cli` | `CliPage` | `revenant verify` documentation |
-| `/docs` | `DocsIndexPage` | Documentation hub |
-| `/docs/:section/:module` | `DocsModulePage` | Getting started, CLI, cloud, AWS sections |
-| `/talk` | `TalkPage` | Contact / sales form → API `/api/v1/public/contact` |
-| `/coffee` | `CoffeePage` | Support / fund form |
-| `/login`, `/register` | OAuth + email | Same API as dashboard; redirects to cloud app after sign-in |
-| `/cli` | `CliPage` | Install, quick start, command reference |
-| `/talk`, `/coffee` | Contact forms | POST → API `/api/v1/public/contact` |
+| Route                    | Page             | Purpose                                                     |
+| ------------------------ | ---------------- | ----------------------------------------------------------- |
+| `/`                      | `HomePage`       | Hero, features, demo, CLI showcase, pricing preview         |
+| `/pricing`               | `PricingPage`    | Starter / Pro / Enterprise                                  |
+| `/cli`                   | `CliPage`        | `revenant verify` documentation                             |
+| `/docs`                  | `DocsIndexPage`  | Documentation hub                                           |
+| `/docs/:section/:module` | `DocsModulePage` | Getting started, CLI, cloud, AWS sections                   |
+| `/talk`                  | `TalkPage`       | Contact / sales form → API `/api/v1/public/contact`         |
+| `/coffee`                | `CoffeePage`     | Support / fund form                                         |
+| `/login`, `/register`    | OAuth + email    | Same API as dashboard; redirects to cloud app after sign-in |
+| `/cli`                   | `CliPage`        | Install, quick start, command reference                     |
+| `/talk`, `/coffee`       | Contact forms    | POST → API `/api/v1/public/contact`                         |
 
 **Production URL:** https://revenant-verify-933e4.web.app
 
 **Marketing-specific:**
+
 - `lib/engagement.ts` — tracks visits, hero views, logins to API (`/api/v1/public/engagement`).
 - `lib/site.ts` + `lib/env.defaults.ts` — production API/app URLs baked into build (no localhost in prod).
 - `lib/seo.ts`, `PageMeta` — per-page SEO, JSON-LD, auto-generated sitemap (39 URLs).
@@ -340,12 +342,12 @@ npm run dev
 
 Open **http://localhost:5173**
 
-| Variable | Default (dev) | Description |
-|----------|---------------|-------------|
-| `VITE_API_URL` | `http://localhost:8080` | Backend API base URL |
-| `VITE_SITE_URL` | `http://localhost:5173` | This dashboard’s public URL (OAuth return) |
-| `VITE_MARKETING_URL` | `http://localhost:3000` | Marketing site — docs/pricing/billing links |
-| `VITE_AGENT_IMAGE` | `277pawan/revenant-agent:latest` | Docker image shown on Runners page |
+| Variable             | Default (dev)                    | Description                                 |
+| -------------------- | -------------------------------- | ------------------------------------------- |
+| `VITE_API_URL`       | `http://localhost:8080`          | Backend API base URL                        |
+| `VITE_SITE_URL`      | `http://localhost:5173`          | This dashboard’s public URL (OAuth return)  |
+| `VITE_MARKETING_URL` | `http://localhost:3000`          | Marketing site — docs/pricing/billing links |
+| `VITE_AGENT_IMAGE`   | `277pawan/revenant-agent:latest` | Docker image shown on Runners page          |
 
 Production fallbacks live in `src/lib/env.defaults.ts` (used when env vars are unset at build time).
 
@@ -367,37 +369,47 @@ Verify: `curl http://localhost:8080/health`
 
 ### Frontend (this repo) — Firebase Hosting
 
-| Item | Value |
-|------|-------|
-| Firebase project | `revenant-cloud-web` |
-| Live URL | https://revenant-cloud-web.web.app |
-| CI | GitHub Actions on push to `main` |
+| Item             | Value                              |
+| ---------------- | ---------------------------------- |
+| Firebase project | `revenant-cloud-web`               |
+| Live URL         | https://revenant-cloud-web.web.app |
+| CI               | GitHub Actions on push to `main`   |
 
 **CI build env** (`.github/workflows/firebase-hosting-*.yml`):
 
-| Variable | Production value |
-|----------|------------------|
-| `VITE_API_URL` | `https://revenant-api-171384186168.asia-south1.run.app` |
-| `VITE_SITE_URL` | `https://revenant-cloud-web.web.app` |
-| `VITE_MARKETING_URL` | `https://revenant-verify-933e4.web.app` |
+| Variable             | Production value                                        |
+| -------------------- | ------------------------------------------------------- |
+| `VITE_API_URL`       | `https://revenant-api-171384186168.asia-south1.run.app` |
+| `VITE_SITE_URL`      | `https://revenant-cloud-web.web.app`                    |
+| `VITE_MARKETING_URL` | `https://revenant-verify-933e4.web.app`                 |
 
-| Secret | Purpose |
-|--------|---------|
-| `FIREBASE_SERVICE_ACCOUNT_REVENANT_CLOUD_WEB` | Firebase deploy *(set by Firebase CLI)* |
+| Secret                                        | Purpose                                 |
+| --------------------------------------------- | --------------------------------------- |
+| `FIREBASE_SERVICE_ACCOUNT_REVENANT_CLOUD_WEB` | Firebase deploy _(set by Firebase CLI)_ |
 
 ```bash
 npm run build
 firebase deploy --only hosting --project revenant-cloud-web
 ```
 
+## Recovery points and restores
+
+For AWS RDS workflows, the Recovery points view discovers available manual and automated snapshots for the configured source instance and lists them newest-first. A user can choose a recovery point to restore into a new RDS instance; Revenant reads the source instance's subnet group and VPC security groups from AWS and reuses them for the restore. The configured recovery instance class is preferred, falling back to the source instance class.
+
+Restore attempts are recorded separately from snapshots. The new RDS instance is retained in the customer's AWS account, and its status/history is available under **Recovered instances**. It is not automatically reaped because it may contain data the user wants to inspect; it continues to incur AWS charges until the customer deletes it.
+
+Manual snapshots can be deleted from AWS through the recovery-point action. AWS does not allow individual deletion of automated snapshots, so Revenant can only hide those from the active recovery-point list; AWS retains them according to its backup retention policy. Existing verification and restore history is kept in Revenant.
+
+Legacy verification records without an AWS snapshot ID are matched against snapshots that existed by the verification time. The resolved ID is saved and shown for review before a restore is started; if Revenant cannot make a safe match, it does not guess a snapshot.
+
 ### Backend — Google Cloud Run
 
-| Item | Value |
-|------|-------|
-| GCP project | `revenant-cloud` |
-| Service | `revenant-api` |
-| Region | `asia-south1` (Mumbai) |
-| Database | Neon Postgres (`revenant_cloud`) |
+| Item        | Value                            |
+| ----------- | -------------------------------- |
+| GCP project | `revenant-cloud`                 |
+| Service     | `revenant-api`                   |
+| Region      | `asia-south1` (Mumbai)           |
+| Database    | Neon Postgres (`revenant_cloud`) |
 
 ```bash
 cd ../revenant-cloud
@@ -405,6 +417,7 @@ cd ../revenant-cloud
 ```
 
 API must allow frontend origins in `CORS_ORIGIN` (see `revenant-cloud/scripts/production-cors.txt`):
+
 ```
 https://revenant-cloud-web.web.app,https://revenant-cloud-web.firebaseapp.com,https://revenant-verify-933e4.web.app,https://revenant-verify-933e4.firebaseapp.com,http://localhost:5173,http://localhost:3000
 ```
@@ -444,12 +457,12 @@ src/
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Vite dev server (port 5173) |
-| `npm run build` | Typecheck + production bundle |
-| `npm run preview` | Preview production build locally |
-| `npm run typecheck` | `tsc` only |
+| Command             | Description                      |
+| ------------------- | -------------------------------- |
+| `npm run dev`       | Vite dev server (port 5173)      |
+| `npm run build`     | Typecheck + production bundle    |
+| `npm run preview`   | Preview production build locally |
+| `npm run typecheck` | `tsc` only                       |
 
 ---
 

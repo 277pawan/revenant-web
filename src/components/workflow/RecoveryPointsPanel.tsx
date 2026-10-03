@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
   Cloud,
@@ -66,7 +66,8 @@ export function RecoveryPointsPanel({
   compact = false,
   refreshToken = 0,
   lastDrillStatus,
-  onActionComplete,
+  deletedRecoveryPointIds = [],
+  onRecoveryPointDeleted,
   onViewAll,
 }: {
   databaseId: string;
@@ -75,12 +76,15 @@ export function RecoveryPointsPanel({
   compact?: boolean;
   refreshToken?: number;
   lastDrillStatus?: string | null;
-  onActionComplete?: () => void;
+  deletedRecoveryPointIds?: string[];
+  onRecoveryPointDeleted?: (id: string) => void;
   onViewAll?: () => void;
 }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const [points, setPoints] = useState<RecoveryPointResource[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasLoaded = useRef(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [recoveringPoint, setRecoveringPoint] = useState<RecoveryPointResource | null>(null);
@@ -88,7 +92,7 @@ export function RecoveryPointsPanel({
   const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasLoaded.current) setLoading(true);
     setLoadError(null);
     try {
       const res = await api.listRecoveryPoints(databaseId);
@@ -97,6 +101,7 @@ export function RecoveryPointsPanel({
       setPoints([]);
       setLoadError(err instanceof Error ? err.message : "Could not load recovery points.");
     } finally {
+      hasLoaded.current = true;
       setLoading(false);
     }
   }, [databaseId]);
@@ -113,8 +118,7 @@ export function RecoveryPointsPanel({
         "Verification started",
         `Restoring ${point.snapshotIdentifier} in your AWS account to run checks.`
       );
-      onActionComplete?.();
-      window.location.href = `/workflows/${databaseId}/runs/${res.job.id}`;
+      navigate(`/workflows/${databaseId}/runs/${res.job.id}`);
     } catch (err) {
       toast.error(
         "Could not verify",
@@ -139,8 +143,8 @@ export function RecoveryPointsPanel({
         );
       }
       setDeleteTarget(null);
-      await load();
-      onActionComplete?.();
+      setPoints((current) => current.filter((point) => point.id !== deleteTarget.id));
+      onRecoveryPointDeleted?.(deleteTarget.id);
     } catch (err) {
       toast.error(
         "Could not delete snapshot",
@@ -163,7 +167,8 @@ export function RecoveryPointsPanel({
     );
   }
 
-  const visiblePoints = compact ? points.slice(0, 1) : points;
+  const activePoints = points.filter((point) => !deletedRecoveryPointIds.includes(point.id));
+  const visiblePoints = compact ? activePoints.slice(0, 1) : activePoints;
 
   return (
     <section
@@ -226,8 +231,8 @@ export function RecoveryPointsPanel({
               </p>
             ) : (
               <p className="mt-2">
-                Run <strong>Verify snapshot</strong> or a full restore drill. Revenant records the
-                AWS snapshot tested — even if validation checks fail.
+                Run a full restore drill to create a recovery point, or add an AWS snapshot. Its
+                card will let you verify that exact snapshot before recovery.
               </p>
             )}
           </div>
@@ -419,18 +424,48 @@ function RecoverFromPointDialog({
   onClose: () => void;
 }) {
   const toast = useToast();
-  const [targetIdentifier, setTargetIdentifier] = useState(
-    `revenant-restore-${point.id.slice(0, 8)}`
-  );
+  const suggestedTargetIdentifier = `revenant-restore-${point.id.slice(0, 8)}`;
+  const [targetNameMode, setTargetNameMode] = useState<"suggested" | "custom">("suggested");
+  const [customTargetIdentifier, setCustomTargetIdentifier] = useState("");
+  const targetIdentifier =
+    targetNameMode === "suggested" ? suggestedTargetIdentifier : customTargetIdentifier;
   const [confirmTargetIdentifier, setConfirmTargetIdentifier] = useState("");
   const [instances, setInstances] = useState<import("../../types/api").RecoveryInstanceResource[]>([]);
   const [starting, setStarting] = useState(false);
   const [hasStartedRecovery, setHasStartedRecovery] = useState(false);
   const [activeRecoveryPointId, setActiveRecoveryPointId] = useState(point.id);
   const [snapshotIdentifier, setSnapshotIdentifier] = useState(point.snapshotIdentifier);
+  const [sourceState, setSourceState] = useState<
+    "checking" | "available" | "missing" | "unavailable" | "not_configured" | "unknown"
+  >("checking");
+  const [sourceStateMessage, setSourceStateMessage] = useState<string | null>(null);
+  const [dbSubnetGroupName, setDbSubnetGroupName] = useState("");
+  const [vpcSecurityGroupIds, setVpcSecurityGroupIds] = useState("");
   const [snapshotReviewComplete, setSnapshotReviewComplete] = useState(
     !point.snapshotIdentifier.startsWith("latest-verified-")
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.getAwsSourceStatus(point.databaseId)
+      .then(({ status }) => {
+        if (!cancelled) {
+          setSourceState(status.state);
+          setSourceStateMessage(status.message);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSourceState("unknown");
+          setSourceStateMessage(
+            err instanceof Error ? err.message : "Could not check the source RDS status."
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [point.databaseId]);
 
   useEffect(() => {
     void api.listRecoveryInstances(activeRecoveryPointId)
@@ -454,12 +489,22 @@ function RecoverFromPointDialog({
   const nameConfirmed = confirmTargetIdentifier === targetIdentifier;
   async function startRecovery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!nameConfirmed) return;
+    const subnetGroup = dbSubnetGroupName.trim();
+    const securityGroupIds = vpcSecurityGroupIds
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (
+      !nameConfirmed ||
+      (Boolean(subnetGroup) !== (securityGroupIds.length > 0))
+    ) return;
     setStarting(true);
     try {
       const result = await api.recoverFromRecoveryPoint(activeRecoveryPointId, {
         targetIdentifier,
         confirmTargetIdentifier,
+        ...(subnetGroup ? { dbSubnetGroupName: subnetGroup } : {}),
+        ...(securityGroupIds.length > 0 ? { vpcSecurityGroupIds: securityGroupIds } : {}),
         ...(!snapshotReviewComplete ? { resolveOnly: true } : {}),
       });
       setActiveRecoveryPointId(result.recoveryPointId);
@@ -516,10 +561,32 @@ function RecoverFromPointDialog({
         <div className="space-y-4 px-5 py-4">
           <p className="border-l-2 border-amber-500 pl-3 text-sm text-slate-700">
             This creates a new, retained and billable RDS instance in your AWS account. It will not
-            modify the source database or snapshot. Revenant reuses the source instance's subnet
-            group and VPC security groups, and uses the configured recovery class or the source
-            instance class.
+            modify the source database or snapshot. The selected name identifies the new RDS
+            instance; database names and contents are restored as stored in the snapshot.
           </p>
+          {sourceState === "missing" ? (
+            <p role="alert" className="border-l-2 border-red-500 pl-3 text-sm text-red-800">
+              The source RDS instance is missing. {sourceStateMessage} Since its network settings
+              cannot be read, AWS default networking will be used unless you provide both network
+              settings below. This may fail if your AWS account has no default VPC.
+            </p>
+          ) : sourceState === "checking" ? (
+            <p role="status" className="text-sm text-slate-500">
+              Checking whether the source RDS instance still exists…
+            </p>
+          ) : sourceState === "unknown" || sourceState === "not_configured" ? (
+            <p role="alert" className="border-l-2 border-amber-500 pl-3 text-sm text-amber-900">
+              {sourceStateMessage ?? "Could not confirm the source RDS state."} If the source is
+              missing, a retained restore needs AWS default networking or both network settings
+              below.
+            </p>
+          ) : (
+            <p className="text-xs text-slate-600">
+              When available, Revenant reuses the source instance's network settings. If the source
+              is missing, leave both network fields blank to use AWS default networking or provide
+              both values below.
+            </p>
+          )}
 
           {!snapshotReviewComplete && (
             <p role="alert" className="border-l-2 border-red-500 pl-3 text-sm text-red-800">
@@ -562,15 +629,29 @@ function RecoverFromPointDialog({
           {!hasStartedRecovery && (
             <form onSubmit={(event) => void startRecovery(event)} className="space-y-4">
               <label className="block text-sm font-medium text-slate-800">
-                New RDS instance identifier
-                <input
-                  required
-                  maxLength={63}
-                  value={targetIdentifier}
-                  onChange={(event) => setTargetIdentifier(event.target.value)}
-                  className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
-                />
+                AWS recovery instance name
+                <select
+                  value={targetNameMode}
+                  onChange={(event) => setTargetNameMode(event.target.value as "suggested" | "custom")}
+                  className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="suggested">Use suggested name ({suggestedTargetIdentifier})</option>
+                  <option value="custom">Choose another name</option>
+                </select>
               </label>
+              {targetNameMode === "custom" && (
+                <label className="block text-sm font-medium text-slate-800">
+                  New RDS instance identifier
+                  <input
+                    required
+                    maxLength={63}
+                    pattern="[a-zA-Z][a-zA-Z0-9-]*"
+                    value={customTargetIdentifier}
+                    onChange={(event) => setCustomTargetIdentifier(event.target.value)}
+                    className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                  />
+                </label>
+              )}
               <label className="block text-sm font-medium text-slate-800">
                 Type <span className="font-mono">{targetIdentifier}</span> to confirm
                 <input
@@ -581,13 +662,53 @@ function RecoverFromPointDialog({
                   autoComplete="off"
                 />
               </label>
+              <details className="rounded-lg border border-slate-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-700">
+                  Recovery network settings (optional)
+                </summary>
+                <p className="mt-2 text-xs text-slate-600">
+                  Enter both values to select a network. Leave both blank to reuse the source
+                  network, or AWS default networking if the source no longer exists.
+                </p>
+                <label className="mt-3 block text-sm font-medium text-slate-800">
+                  DB subnet group
+                  <input
+                    value={dbSubnetGroupName}
+                    onChange={(event) => setDbSubnetGroupName(event.target.value)}
+                    className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="mt-3 block text-sm font-medium text-slate-800">
+                  VPC security group IDs
+                  <input
+                    value={vpcSecurityGroupIds}
+                    onChange={(event) => setVpcSecurityGroupIds(event.target.value)}
+                    placeholder="sg-0123456789abcdef0, sg-abcdef01234567890"
+                    className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+                    autoComplete="off"
+                  />
+                </label>
+                {Boolean(dbSubnetGroupName.trim()) !==
+                  (vpcSecurityGroupIds.split(",").some((id) => id.trim().length > 0)) && (
+                  <p className="mt-2 text-xs text-red-700">
+                    Provide both a DB subnet group and at least one VPC security group, or leave
+                    both fields blank.
+                  </p>
+                )}
+              </details>
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button type="button" onClick={onClose} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={starting || !nameConfirmed}
+                  disabled={
+                    starting ||
+                    !nameConfirmed ||
+                    (Boolean(dbSubnetGroupName.trim()) !==
+                      (vpcSecurityGroupIds.split(",").some((id) => id.trim().length > 0)))
+                  }
                   className="inline-flex items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {starting && <Loader2 size={14} className="animate-spin" />}

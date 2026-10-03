@@ -26,6 +26,7 @@ import { BillingSettingsPage } from "./pages/BillingSettingsPage";
 import { CredentialsPage } from "./pages/CredentialsPage";
 import { OAuthCompletePage } from "./pages/OAuthCompletePage";
 import { RecoveredInstancesPage } from "./pages/RecoveredInstancesPage";
+import { RecoveryOperationsPage } from "./pages/RecoveryOperationsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -205,6 +206,14 @@ export function App() {
         element={
           <ProtectedRoute>
             <RecoveredInstancesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/recovery-operations"
+        element={
+          <ProtectedRoute>
+            <RecoveryOperationsPage />
           </ProtectedRoute>
         }
       />

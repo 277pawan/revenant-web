@@ -7,7 +7,7 @@ const baseDatabaseFields = z.object({
     .min(2, "Display name must be at least 2 characters")
     .max(255, "Display name is too long"),
   description: z.string().max(2000, "Description is too long"),
-  engine: z.literal("postgres"),
+  engine: z.enum(["postgres", "mysql"]),
   recoveryMode: z.enum(["direct", "aws-rds"]),
   host: z.string().trim().max(255, "Host is too long"),
   port: z.coerce
@@ -22,6 +22,7 @@ const baseDatabaseFields = z.object({
   region: z.string().max(50, "Region is too long"),
   rdsSourceIdentifier: z.string().max(255, "RDS instance ID is too long"),
   recoveryUseFreetier: z.boolean(),
+  recoveryDrillsEnabled: z.boolean(),
   recoverySandboxInstanceClass: z.string().max(50, "Instance class is too long"),
   awsAccessKeyId: z.string().max(128, "Access key is too long"),
   awsSecretAccessKey: z.string().max(128, "Secret key is too long"),
@@ -154,6 +155,7 @@ export const wizardDefaults: DatabaseWizardValues = {
   region: "",
   rdsSourceIdentifier: "",
   recoveryUseFreetier: true,
+  recoveryDrillsEnabled: false,
   recoverySandboxInstanceClass: "",
   awsAccessKeyId: "",
   awsSecretAccessKey: "",
@@ -161,7 +163,7 @@ export const wizardDefaults: DatabaseWizardValues = {
 };
 
 export const stepFields: Record<1 | 2 | 3 | 4, (keyof DatabaseWizardValues)[]> = {
-  1: ["name", "description", "region", "recoveryMode"],
+  1: ["name", "description", "engine", "region", "recoveryMode"],
   2: [
     "host",
     "port",
@@ -171,6 +173,7 @@ export const stepFields: Record<1 | 2 | 3 | 4, (keyof DatabaseWizardValues)[]> =
     "sslMode",
     "rdsSourceIdentifier",
     "recoveryUseFreetier",
+    "recoveryDrillsEnabled",
     "recoverySandboxInstanceClass",
     "awsAccessKeyId",
     "awsSecretAccessKey",

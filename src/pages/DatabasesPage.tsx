@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Database, FileCode2, Lock, Pencil, Play, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Database,
+  FileCode2,
+  Lock,
+  Loader2,
+  Pencil,
+  Play,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -10,6 +22,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
   roleHasPermission,
+  type AwsSourceStatus,
   type DatabaseResource,
   type PaginationMeta,
 } from "../types/api";
@@ -20,6 +33,10 @@ const emptyPagination: PaginationMeta = {
   total: 0,
   totalPages: 1,
 };
+
+type AwsSourceDisplayStatus =
+  | AwsSourceStatus
+  | (Partial<Omit<AwsSourceStatus, "state">> & { state: "checking" });
 
 export function DatabasesPage() {
   const { user } = useAuth();
@@ -37,6 +54,9 @@ export function DatabasesPage() {
   const [deleteTarget, setDeleteTarget] = useState<DatabaseResource | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [awsSourceStatuses, setAwsSourceStatuses] = useState<
+    Record<string, AwsSourceDisplayStatus>
+  >({});
 
   const load = useCallback(async (nextPage: number) => {
     setLoading(true);
@@ -56,6 +76,52 @@ export function DatabasesPage() {
   useEffect(() => {
     void load(page);
   }, [load, page]);
+
+  useEffect(() => {
+    const targets = databases.filter((db) => db.recoveryMode === "aws-rds");
+    let nextIndex = 0;
+    let cancelled = false;
+
+    setAwsSourceStatuses(
+      Object.fromEntries(targets.map((db) => [db.id, { state: "checking" as const }]))
+    );
+
+    async function checkNext() {
+      while (!cancelled) {
+        const database = targets[nextIndex++];
+        if (!database) return;
+
+        try {
+          const { status } = await api.getAwsSourceStatus(database.id);
+          if (!cancelled) {
+            setAwsSourceStatuses((current) => ({ ...current, [database.id]: status }));
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setAwsSourceStatuses((current) => ({
+              ...current,
+              [database.id]: {
+                state: "unknown",
+                rdsStatus: null,
+                availableSnapshotCount: null,
+                latestSnapshotIdentifier: null,
+                latestSnapshotCreatedAt: null,
+                checkedAt: new Date().toISOString(),
+                message: err instanceof Error ? err.message : "Could not check AWS status.",
+              },
+            }));
+          }
+        }
+      }
+    }
+
+    void Promise.all(
+      Array.from({ length: Math.min(3, targets.length) }, () => checkNext())
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [databases]);
 
   const filtered = databases.filter((db) => {
     const q = query.trim().toLowerCase();
@@ -86,6 +152,16 @@ export function DatabasesPage() {
 
   async function runValidation(db: DatabaseResource) {
     if (!canRun) return;
+    const awsStatus = awsSourceStatuses[db.id];
+    if (db.recoveryMode === "aws-rds" && awsStatus?.state !== "available") {
+      toast.error(
+        "Full drill unavailable",
+        awsStatus?.state === "missing" && awsStatus.availableSnapshotCount
+          ? "The source RDS instance is missing. Verify or recover an existing snapshot from the workflow's Recovery Points tab."
+          : awsStatus?.message ?? "Wait for the AWS source check to finish before starting a drill."
+      );
+      return;
+    }
     setRunningId(db.id);
     setError(null);
     try {
@@ -237,9 +313,57 @@ export function DatabasesPage() {
                         <div className="font-mono text-xs text-slate-500">{db.databaseName}</div>
                       )}
                       {db.recoveryMode === "aws-rds" && (
-                        <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-800">
-                          AWS restore
-                        </span>
+                        <div className="mt-1 flex flex-col items-start gap-1">
+                          <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-800">
+                            AWS restore
+                          </span>
+                          {awsSourceStatuses[db.id]?.state === "checking" || !awsSourceStatuses[db.id] ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                              <Loader2 size={13} className="animate-spin" />
+                              Checking AWS source…
+                            </span>
+                          ) : awsSourceStatuses[db.id].state === "available" ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
+                              <CheckCircle2 size={13} />
+                              RDS available
+                              {awsSourceStatuses[db.id].availableSnapshotCount != null &&
+                                ` · ${awsSourceStatuses[db.id].availableSnapshotCount} snapshot(s)`}
+                            </span>
+                          ) : (
+                            <div className="flex flex-col items-start gap-1">
+                              <span
+                                className={`inline-flex items-center gap-1 text-xs font-medium ${
+                                  awsSourceStatuses[db.id].state === "missing"
+                                    ? "text-red-700"
+                                    : "text-amber-700"
+                                }`}
+                                title={awsSourceStatuses[db.id].message ?? undefined}
+                              >
+                                <AlertTriangle size={13} />
+                                {awsSourceStatuses[db.id].state === "missing"
+                                  ? "Source RDS not found"
+                                  : awsSourceStatuses[db.id].state === "unavailable"
+                                    ? `RDS ${awsSourceStatuses[db.id].rdsStatus ?? "unavailable"}`
+                                    : awsSourceStatuses[db.id].state === "not_configured"
+                                      ? "AWS setup incomplete"
+                                      : "AWS status unknown"}
+                              </span>
+                              {awsSourceStatuses[db.id].availableSnapshotCount != null && (
+                                <span className="text-xs text-slate-600">
+                                  {awsSourceStatuses[db.id].availableSnapshotCount} available snapshot(s)
+                                </span>
+                              )}
+                              {awsSourceStatuses[db.id].state === "missing" && (
+                                <Link
+                                  to={`/workflows/${db.id}?tab=recovery-points`}
+                                  className="text-xs font-medium text-brand hover:underline"
+                                >
+                                  Open Recovery Points
+                                </Link>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-700">
@@ -300,8 +424,18 @@ export function DatabasesPage() {
                         {canRun && (
                           <button
                             type="button"
-                            disabled={runningId === db.id}
+                            disabled={
+                              runningId === db.id ||
+                              (db.recoveryMode === "aws-rds" &&
+                                awsSourceStatuses[db.id]?.state !== "available")
+                            }
                             onClick={() => void runValidation(db)}
+                            title={
+                              db.recoveryMode === "aws-rds" &&
+                              awsSourceStatuses[db.id]?.state !== "available"
+                                ? "A full drill requires an AWS RDS source instance in available state."
+                                : undefined
+                            }
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-brand hover:bg-blue-50 disabled:opacity-50"
                           >
                             <Play size={14} />

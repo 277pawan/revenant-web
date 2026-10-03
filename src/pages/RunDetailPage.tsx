@@ -102,8 +102,20 @@ export function RunDetailPage() {
 
   const slug = service ? workflowSlug(service) : job?.databaseName ?? "workflow";
   const effectiveStatus = effectiveJobStatus(job);
-  const passChecks = job?.results.filter((r) => r.status === "pass").length ?? 0;
-  const totalChecks = job?.results.length ?? 0;
+  const validationResults =
+    job?.results.filter(
+      (result) =>
+        !["snapshot", "reap", "cleanup", "recovery_snapshot"].includes(
+          result.checkType
+        )
+    ) ?? [];
+  const passChecks = validationResults.filter((r) => r.status === "pass").length;
+  const totalChecks = validationResults.length;
+  const failedSourceChecks =
+    job?.results.filter(
+      (result) =>
+        result.checkType === "source_validation" && result.status === "fail"
+    ) ?? [];
   const reportReady =
     job != null && ["pass", "fail", "error"].includes(effectiveStatus);
 
@@ -316,8 +328,25 @@ export function RunDetailPage() {
               <p className="font-medium">Snapshot step failed (full drill only)</p>
               <p className="mt-1">
                 Revenant checked your <strong>live RDS</strong> before creating a new snapshot.
-                One or more validation plan checks failed, so no snapshot was taken. This is
-                intentional — bad data is not snapshotted.
+                {failedSourceChecks.length > 0
+                  ? ` ${failedSourceChecks.length} source validation check${failedSourceChecks.length === 1 ? "" : "s"} failed, so no snapshot was taken.`
+                  : " The source validation or snapshot operation failed, so no snapshot was taken."}
+                {" "}Select a failed validation node below to see its result.
+              </p>
+              {failedSourceChecks.length > 0 && (
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {failedSourceChecks.map((result) => (
+                    <li key={result.id}>
+                      <strong>{result.checkName}:</strong>{" "}
+                      {result.message ?? "Check failed without a detailed message."}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2">
+                Compare each result with its configured expectation. If the database is below an
+                intended requirement, fix the live data; if the expectation itself has changed,
+                update the validation plan.
               </p>
               <p className="mt-2">
                 To test restore without a new snapshot, use{" "}
@@ -328,7 +357,7 @@ export function RunDetailPage() {
                 >
                   validation plan
                 </Link>{" "}
-                or refresh data on live <code className="text-xs">database-1</code>, then run full
+                or refresh data on live <code className="text-xs">{job.databaseName}</code>, then run full
                 drill again.
               </p>
             </div>

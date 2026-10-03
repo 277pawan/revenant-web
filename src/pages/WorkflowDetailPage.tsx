@@ -35,6 +35,7 @@ import {
 } from "../lib/workflow";
 import {
   roleHasPermission,
+  type AwsSourceStatus,
   type JobResource,
   type PaginationMeta,
   type PlanServiceResource,
@@ -43,6 +44,10 @@ import {
 } from "../types/api";
 
 const JOBS_PAGE_SIZE = 10;
+
+type AwsSourceDisplayStatus =
+  | AwsSourceStatus
+  | (Partial<Omit<AwsSourceStatus, "state">> & { state: "checking" });
 
 const VALID_TABS: WorkflowTabId[] = [
   "overview",
@@ -99,8 +104,12 @@ export function WorkflowDetailPage() {
   const [readinessHistory, setReadinessHistory] = useState<ReadinessHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [refreshToken, setRefreshToken] = useState(0);
+  const [deletedRecoveryPointIds, setDeletedRecoveryPointIds] = useState<string[]>([]);
   const [activeJobs, setActiveJobs] = useState<JobResource[]>([]);
   const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
+  const [awsSourceStatus, setAwsSourceStatus] = useState<
+    AwsSourceDisplayStatus | null
+  >(null);
 
   const loadService = useCallback(async () => {
     if (!databaseId) return;
@@ -185,6 +194,37 @@ export function WorkflowDetailPage() {
   }, [loadService]);
 
   useEffect(() => {
+    if (!service || service.recoveryMode !== "aws-rds") {
+      setAwsSourceStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAwsSourceStatus({ state: "checking" });
+    void api.getAwsSourceStatus(service.databaseId)
+      .then(({ status }) => {
+        if (!cancelled) setAwsSourceStatus(status);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAwsSourceStatus({
+            state: "unknown",
+            rdsStatus: null,
+            availableSnapshotCount: null,
+            latestSnapshotIdentifier: null,
+            latestSnapshotCreatedAt: null,
+            checkedAt: new Date().toISOString(),
+            message: err instanceof Error ? err.message : "Could not check AWS source status.",
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [service?.databaseId, service?.recoveryMode]);
+
+  useEffect(() => {
     setJobsPage(1);
   }, [debouncedJobsSearch]);
 
@@ -258,21 +298,26 @@ export function WorkflowDetailPage() {
     }
   }
 
-  async function runWorkflow(drillKind: "full" | "verify" = "full") {
+  async function runWorkflow() {
     if (!databaseId || !canRun) return;
+    if (awsMode && awsSourceStatus?.state !== "available") {
+      toast.error(
+        "Full drill unavailable",
+        awsSourceStatus?.message ?? "Wait for the AWS source check to finish."
+      );
+      return;
+    }
     setRunning(true);
     try {
-      await api.createJob({ databaseId, drillKind });
+      await api.createJob({ databaseId, drillKind: "full" });
       const planHint = service?.planVersion
         ? `Using saved validation plan v${service.planVersion}.`
         : "Using the latest saved validation plan.";
       toast.success(
-        drillKind === "full" ? "Full restore drill queued" : "Verify queued",
-        drillKind === "full"
-          ? `${planHint} Snapshot → restore → validate → cleanup.`
-          : `${planHint} Using the latest snapshot / live connection.`
+        "Full restore drill queued",
+        `${planHint} Snapshot → restore → validate → cleanup.`
       );
-      await refreshAll();
+      await Promise.all([loadJobs(), loadActiveJobs()]);
     } catch (err) {
       toast.error(
         "Could not start run",
@@ -308,6 +353,8 @@ export function WorkflowDetailPage() {
     Date.now() - new Date(service.runner.lastSeenAt).getTime() < 60_000;
 
   const awsMode = service.recoveryMode === "aws-rds";
+  const canRunFullDrill =
+    !awsMode || awsSourceStatus?.state === "available";
   const recentJobs = service.jobs;
   const passCount = recentJobs.filter((j) => j.status === "pass").length;
   const totalRuns = recentJobs.length;
@@ -345,10 +392,16 @@ export function WorkflowDetailPage() {
         readiness={readiness}
         lastJob={last}
         canRun={canRun}
+        canRunFull={canRunFullDrill}
+        sourceStatusMessage={
+          awsSourceStatus?.state === "checking"
+            ? "Checking the AWS source before enabling a full drill…"
+            : awsSourceStatus?.message
+        }
         canDownload={canDownload}
         running={running}
         awsMode={awsMode}
-        onRunDrill={(kind) => void runWorkflow(kind)}
+        onRunDrill={() => void runWorkflow()}
       />
 
       <WorkflowDetailTabs active={activeTab} onChange={setActiveTab} />
@@ -369,7 +422,10 @@ export function WorkflowDetailPage() {
             compact
             refreshToken={refreshToken}
             lastDrillStatus={last?.status}
-            onActionComplete={() => void refreshAll()}
+            deletedRecoveryPointIds={deletedRecoveryPointIds}
+            onRecoveryPointDeleted={(id) =>
+              setDeletedRecoveryPointIds((current) => [...current, id])
+            }
             onViewAll={() => setActiveTab("recovery-points")}
           />
         </div>
@@ -396,7 +452,10 @@ export function WorkflowDetailPage() {
             canRun={canRun}
             refreshToken={refreshToken}
             lastDrillStatus={last?.status}
-            onActionComplete={() => void refreshAll()}
+            deletedRecoveryPointIds={deletedRecoveryPointIds}
+            onRecoveryPointDeleted={(id) =>
+              setDeletedRecoveryPointIds((current) => [...current, id])
+            }
           />
         </div>
       </WorkflowTabPanel>
@@ -421,7 +480,11 @@ export function WorkflowDetailPage() {
         <div className="mb-6">
           <RecoveryDriftPanel
             databaseId={service.databaseId}
-            onRunDrill={canRun ? () => void runWorkflow("full") : undefined}
+            onRunDrill={
+              canRun && canRunFullDrill
+                ? () => void runWorkflow()
+                : undefined
+            }
             runningDrill={running}
             refreshToken={refreshToken}
           />

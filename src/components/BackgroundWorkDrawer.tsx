@@ -32,13 +32,21 @@ function phaseLabel(job: JobDetailResource | JobResource): string {
   if (job.status === "running") {
     const cleanupStarted = "results" in job && job.results.some((result) => result.checkType === "cleanup");
     if (cleanupStarted) return "Cleaning up temporary resources";
-    return "Runner is processing this run; results appear when reported";
+    return job.runnerProgress?.message ?? "Runner is preparing the validation run.";
   }
   if (job.status === "pass") return "Verification complete";
   if (job.status === "fail") return "Verification finished with failed checks";
   if (job.status === "error") return "Run ended with an error";
   if (job.status === "cancelled") return "Run cancelled";
   return statusLabel(job.status);
+}
+
+function elapsedLabel(startedAt: string | null, now: number): string {
+  if (!startedAt) return "Elapsed time unavailable";
+  const elapsedSeconds = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  return minutes > 0 ? `Elapsed ${minutes}m ${seconds}s` : `Elapsed ${seconds}s`;
 }
 
 export function BackgroundWorkDrawer() {
@@ -162,6 +170,7 @@ export function BackgroundWorkDrawer() {
             const active = isActiveJob(job.status);
             const isExpanded = expanded === job.id;
             const resultCount = job.results.length;
+            const now = Date.now();
             return (
               <article key={job.id} className="rounded-lg border border-white/10 bg-white/[0.04]">
                 <button type="button" onClick={() => setExpanded(isExpanded ? null : job.id)} className="flex w-full items-start gap-3 p-3 text-left">
@@ -173,7 +182,9 @@ export function BackgroundWorkDrawer() {
                     </span>
                     <span className="mt-1 block text-xs text-slate-400">{phaseLabel(job)}</span>
                     <span className="mt-1 block text-[11px] text-slate-500">
-                      {active ? "You can keep working; this run continues in the background." : `${resultCount} recorded step${resultCount === 1 ? "" : "s"}`}
+                      {active
+                        ? `${elapsedLabel(job.startedAt, now)} · This run continues in the background.`
+                        : `${resultCount} recorded step${resultCount === 1 ? "" : "s"}`}
                     </span>
                   </span>
                 </button>
@@ -181,8 +192,9 @@ export function BackgroundWorkDrawer() {
                   <div className="border-t border-white/10 px-3 py-2.5">
                     <ol className="space-y-2">
                       {(job.results.length ? job.results : [
-                        { id: `${job.id}-queue`, checkName: "Job queue", checkType: "queue", status: job.status === "pending" ? "running" : "pass", message: null, durationMs: null, createdAt: job.createdAt },
-                        { id: `${job.id}-runner`, checkName: "Snapshot restore and validation", checkType: "runner", status: job.status === "running" ? "running" : "pending", message: null, durationMs: null, createdAt: job.createdAt },
+                        job.status === "pending"
+                          ? { id: `${job.id}-queue`, checkName: "Job queue", checkType: "queue", status: "running", message: "Waiting for a runner to claim this run.", durationMs: null, createdAt: job.createdAt }
+                          : { id: `${job.id}-runner`, checkName: "Current stage", checkType: "runner", status: "running", message: job.runnerProgress?.message ?? "Runner is preparing the validation run.", durationMs: null, createdAt: job.startedAt ?? job.createdAt },
                       ]).map((result) => (
                         <li key={result.id} className="flex items-start gap-2 text-xs">
                           {result.status === "pass" ? <Check size={13} className="mt-0.5 text-emerald-300" /> : result.status === "running" ? <LoaderCircle size={13} className="mt-0.5 animate-spin text-cyan-300" /> : <Clock3 size={13} className="mt-0.5 text-slate-500" />}

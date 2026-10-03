@@ -62,6 +62,7 @@ export function DatabaseEditPage() {
           region: database.region ?? "",
           rdsSourceIdentifier: database.rdsSourceIdentifier ?? "",
           recoveryUseFreetier: database.recoveryUseFreetier ?? true,
+          recoveryDrillsEnabled: database.recoveryDrillsEnabled ?? false,
           recoverySandboxInstanceClass: database.recoverySandboxInstanceClass ?? "",
           awsAccessKeyId: "",
           awsSecretAccessKey: "",
