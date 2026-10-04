@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, PanelRightClose, PanelRightOpen, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, PanelRightClose, PanelRightOpen, X, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { isActiveJob, statusLabel } from "./workflow/jobStatus";
@@ -39,6 +39,67 @@ function phaseLabel(job: JobDetailResource | JobResource): string {
   if (job.status === "error") return "Run ended with an error";
   if (job.status === "cancelled") return "Run cancelled";
   return statusLabel(job.status);
+}
+
+type BackgroundCheck = {
+  id: string;
+  checkName: string;
+  checkType: string;
+  status: string;
+  message: string | null;
+};
+
+function backgroundCheckLabel(checkName: string): string {
+  switch (checkName) {
+    case "snapshot":
+      return "Create recovery snapshot";
+    case "drill_snapshot_cleanup":
+      return "Recovery snapshot retention";
+    case "recovery_snapshot":
+      return "Restore from recovery snapshot";
+    case "temp_instance_cleanup":
+      return "Temporary database cleanup";
+    default:
+      return checkName;
+  }
+}
+
+function backgroundChecks(job: JobDetailResource): BackgroundCheck[] {
+  const checks = new Map<string, BackgroundCheck>();
+  for (const check of job.runnerProgress?.checks ?? []) {
+    const keyName =
+      check.checkType === "source_validation"
+        ? check.message ?? check.checkName
+        : check.checkName;
+    checks.set(`${check.checkType}:${keyName}`, {
+      id: `progress-${check.checkType}-${check.checkName}`,
+      checkName: check.checkName,
+      checkType: check.checkType,
+      status: check.status,
+      message: check.message,
+    });
+  }
+  for (const check of job.results) {
+    const keyName =
+      check.checkType === "source_validation"
+        ? check.message ?? check.checkName
+        : check.checkName;
+    checks.set(`${check.checkType}:${keyName}`, {
+      id: check.id,
+      checkName: check.checkName,
+      checkType: check.checkType,
+      status: check.status,
+      message: check.message,
+    });
+  }
+  return [...checks.values()];
+}
+
+function checkStatusLabel(check: BackgroundCheck): string {
+  if (check.status !== "skip" || check.checkType !== "cleanup") return check.status;
+  if (/scheduled|pending/i.test(check.message ?? "")) return "pending";
+  if (/retained/i.test(check.message ?? "")) return "retained";
+  return "skipped";
 }
 
 function elapsedLabel(startedAt: string | null, now: number): string {
@@ -139,7 +200,7 @@ export function BackgroundWorkDrawer() {
     (task) => !["available", "failed", "deleted"].includes(task.status)
   ).length;
 
-  if (activeCount === 0) return null;
+  if (activeCount === 0 && jobs.length === 0 && recoveryTasks.length === 0) return null;
 
   return (
     <>
@@ -154,7 +215,9 @@ export function BackgroundWorkDrawer() {
             <div>
               <h2 className="text-sm font-semibold">Background work</h2>
               <p className="text-[11px] text-slate-400">
-                {activeCount > 0 ? `${activeCount} run${activeCount === 1 ? "" : "s"} in progress` : "No active runs"}
+                {activeCount > 0
+                  ? `${activeCount} run${activeCount === 1 ? "" : "s"} in progress`
+                  : "Recent run results"}
               </p>
             </div>
           </div>
@@ -169,7 +232,8 @@ export function BackgroundWorkDrawer() {
           ) : jobs.map((job) => {
             const active = isActiveJob(job.status);
             const isExpanded = expanded === job.id;
-            const resultCount = job.results.length;
+            const checks = backgroundChecks(job);
+            const resultCount = checks.length;
             const now = Date.now();
             return (
               <article key={job.id} className="rounded-lg border border-white/10 bg-white/[0.04]">
@@ -191,18 +255,30 @@ export function BackgroundWorkDrawer() {
                 {isExpanded && (
                   <div className="border-t border-white/10 px-3 py-2.5">
                     <ol className="space-y-2">
-                      {(job.results.length ? job.results : [
-                        job.status === "pending"
-                          ? { id: `${job.id}-queue`, checkName: "Job queue", checkType: "queue", status: "running", message: "Waiting for a runner to claim this run.", durationMs: null, createdAt: job.createdAt }
-                          : { id: `${job.id}-runner`, checkName: "Current stage", checkType: "runner", status: "running", message: job.runnerProgress?.message ?? "Runner is preparing the validation run.", durationMs: null, createdAt: job.startedAt ?? job.createdAt },
-                      ]).map((result) => (
+                      {(job.status === "pending" || job.status === "running"
+                        ? [
+                            ...checks,
+                            {
+                              id: `${job.id}-current-stage`,
+                              checkName: job.status === "pending" ? "Job queue" : "Current stage",
+                              status: "running",
+                              message:
+                                job.status === "pending"
+                                  ? "Waiting for a runner to claim this run."
+                                  : job.runnerProgress?.message ?? "Runner is preparing the validation run.",
+                            },
+                          ]
+                        : checks
+                      ).map((result) => (
                         <li key={result.id} className="flex items-start gap-2 text-xs">
-                          {result.status === "pass" ? <Check size={13} className="mt-0.5 text-emerald-300" /> : result.status === "running" ? <LoaderCircle size={13} className="mt-0.5 animate-spin text-cyan-300" /> : <Clock3 size={13} className="mt-0.5 text-slate-500" />}
+                          {result.status === "pass" ? <Check size={13} className="mt-0.5 text-emerald-300" /> : result.status === "fail" || result.status === "error" ? <XCircle size={13} className="mt-0.5 text-red-300" /> : result.status === "running" ? <LoaderCircle size={13} className="mt-0.5 animate-spin text-cyan-300" /> : <Clock3 size={13} className="mt-0.5 text-slate-500" />}
                           <span className="min-w-0 flex-1 text-slate-300">
-                            <span className="font-medium">{result.checkName}</span>
+                            <span className="font-medium">{backgroundCheckLabel(result.checkName)}</span>
                             {result.message && <span className="mt-0.5 block break-words text-slate-500">{result.message}</span>}
                           </span>
-                          <span className="shrink-0 text-[10px] uppercase text-slate-500">{result.status}</span>
+                          <span className="shrink-0 text-[10px] uppercase text-slate-500">
+                            {"checkType" in result ? checkStatusLabel(result) : result.status}
+                          </span>
                         </li>
                       ))}
                     </ol>

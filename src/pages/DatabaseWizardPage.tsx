@@ -546,8 +546,9 @@ export function DatabaseWizardPage() {
                       "Mode",
                       values.recoveryMode === "aws-rds"
                         ? "AWS RDS snapshot restore"
-                        : "Direct Postgres",
+                        : `Direct ${engine === "mysql" ? "MySQL" : "PostgreSQL"}`,
                     ],
+                    ["Database engine", engine === "mysql" ? "MySQL" : "PostgreSQL"],
                     ["Region", values.region || "—"],
                     ...(values.recoveryMode === "aws-rds"
                       ? [

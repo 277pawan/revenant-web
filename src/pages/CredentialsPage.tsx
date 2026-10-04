@@ -101,9 +101,9 @@ export function CredentialsPage() {
           return;
         }
         await api.updateDatabase(rotateTarget.id, {
-          awsAccessKeyId,
-          awsSecretAccessKey,
-          ...(awsSessionToken.trim() ? { awsSessionToken } : {}),
+          awsAccessKeyId: awsAccessKeyId.trim(),
+          awsSecretAccessKey: awsSecretAccessKey.trim(),
+          ...(awsSessionToken.trim() ? { awsSessionToken: awsSessionToken.trim() } : {}),
         });
         toast.success("AWS keys updated", `Keys rotated for ${rotateTarget.name}.`);
       }
@@ -282,6 +282,14 @@ export function CredentialsPage() {
                 value={awsSecretAccessKey}
                 onChange={(e) => setAwsSecretAccessKey(e.target.value)}
                 autoComplete="new-password"
+              />
+            </Field>
+            <Field label="AWS session token" hint="Required when using temporary AWS credentials.">
+              <Input
+                value={awsSessionToken}
+                onChange={(e) => setAwsSessionToken(e.target.value)}
+                autoComplete="off"
+                maxLength={2048}
               />
             </Field>
           </div>

@@ -26,7 +26,7 @@ const baseDatabaseFields = z.object({
   recoverySandboxInstanceClass: z.string().max(50, "Instance class is too long"),
   awsAccessKeyId: z.string().max(128, "Access key is too long"),
   awsSecretAccessKey: z.string().max(128, "Secret key is too long"),
-  awsSessionToken: z.string().max(256, "Session token is too long"),
+  awsSessionToken: z.string().max(2048, "Session token is too long"),
 });
 
 function refineRecoveryMode(

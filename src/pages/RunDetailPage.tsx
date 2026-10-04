@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ChevronRight, Download, FileText, Loader2, RefreshCw } from "lucide-react";
-import { ShareProofButton } from "../components/evidence/ShareProofButton";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ChevronRight, Download, FileText, Loader2, Play, RefreshCw } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { RestorePipelineGraph } from "../components/workflow/RestorePipelineGraph";
 import { StatusBadge } from "../components/workflow/StatusBadge";
@@ -14,11 +13,17 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useToast } from "../components/toast/ToastProvider";
 import { formatDuration, runShortId, workflowSlug } from "../lib/workflow";
-import type { JobDetailResource, JobResultResource, PlanServiceResource } from "../types/api";
+import type {
+  AwsSourceStatus,
+  JobDetailResource,
+  JobResultResource,
+  PlanServiceResource,
+} from "../types/api";
 import { roleHasPermission } from "../types/api";
 
 export function RunDetailPage() {
   const { databaseId, jobId } = useParams<{ databaseId: string; jobId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const toast = useToast();
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
@@ -35,6 +40,8 @@ export function RunDetailPage() {
     null
   );
   const [cancelling, setCancelling] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+  const [awsSourceStatus, setAwsSourceStatus] = useState<AwsSourceStatus | null>(null);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -95,6 +102,39 @@ export function RunDetailPage() {
   }, [load]);
 
   useEffect(() => {
+    if (!service || service.recoveryMode !== "aws-rds") {
+      setAwsSourceStatus(null);
+      return;
+    }
+    let cancelled = false;
+    setAwsSourceStatus(null);
+    const checkAwsSource = async () => {
+      try {
+        const { status } = await api.getAwsSourceStatus(service.databaseId);
+        if (!cancelled) setAwsSourceStatus(status);
+      } catch (err) {
+        if (!cancelled) {
+          setAwsSourceStatus({
+            state: "unknown",
+            rdsStatus: null,
+            availableSnapshotCount: null,
+            latestSnapshotIdentifier: null,
+            latestSnapshotCreatedAt: null,
+            checkedAt: new Date().toISOString(),
+            message: err instanceof Error ? err.message : "Could not check AWS status.",
+          });
+        }
+      }
+    };
+    void checkAwsSource();
+    const interval = setInterval(() => void checkAwsSource(), 12_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [service?.databaseId, service?.recoveryMode]);
+
+  useEffect(() => {
     if (!job || !isActiveJob(job.status)) return;
     const t = setInterval(() => void load(), 3000);
     return () => clearInterval(t);
@@ -118,6 +158,30 @@ export function RunDetailPage() {
     ) ?? [];
   const reportReady =
     job != null && ["pass", "fail", "error"].includes(effectiveStatus);
+  const awsMode = service?.recoveryMode === "aws-rds";
+  const canRerun =
+    canRun && (!awsMode || awsSourceStatus?.state === "available");
+
+  async function rerunValidation() {
+    const targetDatabaseId = service?.databaseId ?? databaseId ?? job?.databaseId;
+    if (!targetDatabaseId || !canRerun || rerunning) return;
+    setRerunning(true);
+    try {
+      const { job: nextJob } = await api.createJob({
+        databaseId: targetDatabaseId,
+        drillKind: "full",
+      });
+      toast.success("Validation queued", "A new full validation drill has been queued.");
+      navigate(`/workflows/${nextJob.databaseId}/runs/${nextJob.id}`);
+    } catch (err) {
+      toast.error(
+        "Could not re-run validation",
+        err instanceof Error ? err.message : "Request failed"
+      );
+    } finally {
+      setRerunning(false);
+    }
+  }
 
   async function downloadReport() {
     if (!job || !reportReady) return;
@@ -232,12 +296,6 @@ export function RunDetailPage() {
               </button>
               {canDownload && (
                 <>
-                  <ShareProofButton
-                    job={job}
-                    workflowName={slug}
-                    variant="primary"
-                    className="flex-1 sm:flex-none"
-                  />
                   <button
                     type="button"
                     disabled={!reportReady || downloading !== null}
@@ -311,11 +369,22 @@ export function RunDetailPage() {
               {canRun && (
                 <button
                   type="button"
-                  disabled={!canRun}
-                  className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white opacity-50"
-                  title="Re-run from workflow page"
+                  disabled={!canRerun || rerunning}
+                  onClick={() => void rerunValidation()}
+                  className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    awsMode && awsSourceStatus?.state !== "available"
+                      ? awsSourceStatus?.message ??
+                        "Checking AWS status. Re-run is enabled when the RDS source is available."
+                      : "Queue another full validation drill"
+                  }
                 >
-                  Re-run validation
+                  {rerunning ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Play size={14} />
+                  )}
+                  {rerunning ? "Queueing…" : "Re-run validation"}
                 </button>
               )}
             </div>

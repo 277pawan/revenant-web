@@ -90,9 +90,9 @@ export const PRODUCT_GUIDE_STEPS: ProductGuideStep[] = [
   {
     id: "evidence",
     title: "Evidence & share proof",
-    summary: "One click to download PDF and copy a manager summary.",
+    summary: "Download a PDF certificate and signed recovery evidence.",
     detail:
-      "Every finished drill produces signed JSON and a branded PDF. Use “Share with manager” on a run to copy a Slack-ready message and download the certificate in one step.",
+      "Every finished drill produces signed JSON and a branded PDF. Download the certificate or recovery evidence from the run details.",
     icon: FileCheck,
     target: "nav-evidence",
     href: "/evidence",

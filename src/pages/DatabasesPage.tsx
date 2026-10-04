@@ -348,6 +348,11 @@ export function DatabasesPage() {
                                       ? "AWS setup incomplete"
                                       : "AWS status unknown"}
                               </span>
+                              {awsSourceStatuses[db.id].message && (
+                                <span className="max-w-xs break-words text-xs text-slate-600">
+                                  {awsSourceStatuses[db.id].message}
+                                </span>
+                              )}
                               {awsSourceStatuses[db.id].availableSnapshotCount != null && (
                                 <span className="text-xs text-slate-600">
                                   {awsSourceStatuses[db.id].availableSnapshotCount} available snapshot(s)

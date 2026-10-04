@@ -5,9 +5,7 @@ import {
   FileCode2,
   FileText,
   Play,
-  Share2,
 } from "lucide-react";
-import { ShareProofButton } from "../evidence/ShareProofButton";
 import { StatusBadge } from "./StatusBadge";
 import { formatRelativeTime } from "../../lib/workflow";
 import type { JobResource, RecoveryReadinessResource, PlanServiceResource } from "../../types/api";
@@ -159,19 +157,6 @@ export function WorkflowCommandCenter({
         ))}
       </div>
 
-      {canDownload && lastJob && ["pass", "fail", "error"].includes(lastJob.status) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-emerald-50/40 px-5 py-3">
-          <p className="text-sm text-slate-700">
-            <Share2 size={14} className="mr-1 inline text-emerald-700" />
-            Share proof with your manager or auditor
-          </p>
-          <ShareProofButton
-            job={lastJob}
-            workflowName={service.databaseName}
-            variant="primary"
-          />
-        </div>
-      )}
     </section>
   );
 }

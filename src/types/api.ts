@@ -446,6 +446,12 @@ export interface JobResource {
     stage: string;
     message: string;
     updatedAt: string;
+    checks?: Array<{
+      checkName: string;
+      checkType: string;
+      status: JobCheckStatus | string;
+      message: string | null;
+    }>;
   } | null;
   startedAt: string | null;
   finishedAt: string | null;

@@ -30,6 +30,7 @@ export function DatabaseEditPage() {
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
     formState: { errors },
   } = useForm<DatabaseWizardValues>({
@@ -51,10 +52,10 @@ export function DatabaseEditPage() {
         reset({
           name: database.name,
           description: database.description ?? "",
-          engine: "postgres",
+          engine: database.engine === "mysql" ? "mysql" : "postgres",
           recoveryMode: database.recoveryMode ?? "direct",
           host: database.host ?? "",
-          port: database.port ?? 5432,
+          port: database.port ?? (database.engine === "mysql" ? 3306 : 5432),
           databaseName: database.databaseName ?? "",
           username: database.username ?? "",
           password: "",
@@ -98,7 +99,7 @@ export function DatabaseEditPage() {
 
       await api.updateDatabase(id, {
         name: values.name.trim(),
-        engine: "postgres",
+        engine: values.engine,
         recoveryMode: values.recoveryMode,
         host:
           values.recoveryMode === "direct" || values.recoveryMode === "aws-rds"
@@ -176,9 +177,25 @@ export function DatabaseEditPage() {
               </Field>
             </div>
 
+            <Field label="Database engine" htmlFor="engine" error={errors.engine?.message}>
+              <Select
+                id="engine"
+                invalid={!!errors.engine}
+                {...register("engine", {
+                  onChange: (event) => {
+                    const nextEngine = event.target.value as DatabaseWizardValues["engine"];
+                    setValue("port", nextEngine === "mysql" ? 3306 : 5432);
+                  },
+                })}
+              >
+                <option value="postgres">PostgreSQL</option>
+                <option value="mysql">MySQL</option>
+              </Select>
+            </Field>
+
             <Field label="Validation mode" htmlFor="recoveryMode" error={errors.recoveryMode?.message}>
               <Select id="recoveryMode" invalid={!!errors.recoveryMode} {...register("recoveryMode")}>
-                <option value="direct">Direct — connect to live Postgres</option>
+                <option value="direct">Direct — connect to live database</option>
                 <option value="aws-rds">AWS RDS — snapshot restore drill</option>
               </Select>
             </Field>
