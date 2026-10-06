@@ -22,7 +22,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { RevenantMark } from "./auth/RevenantMark";
-import { ProductGuideLauncher, ProductGuideWizard } from "./guide/ProductGuideWizard";
+import { ProductGuideWizard } from "./guide/ProductGuideWizard";
 import { TrialStatusBar } from "./TrialStatusBar";
 import { BackgroundWorkDrawer } from "./BackgroundWorkDrawer";
 import { SidebarNavGroup } from "./layout/SidebarNavGroup";
@@ -56,8 +56,16 @@ const navGroups: NavGroup[] = [
       { to: "/workflows", label: "Restore drills", icon: PlayCircle },
       { to: "/schedules", label: "Schedules", icon: Calendar },
       { to: "/evidence", label: "Evidence Vault", icon: FileCheck },
-      { to: "/recovery-instances", label: "Recovered instances", icon: History },
-      { to: "/recovery-operations", label: "Recovery operations", icon: SlidersHorizontal },
+      {
+        to: "/recovery-instances",
+        label: "Recovered instances",
+        icon: History,
+      },
+      {
+        to: "/recovery-operations",
+        label: "Recovery operations",
+        icon: SlidersHorizontal,
+      },
     ],
   },
   {
@@ -73,11 +81,14 @@ const settingsItems: Array<NavItem | { label: string; soon: true }> = [
   { to: "/settings/billing", label: "Plan & billing", icon: CreditCard },
   { to: "/settings/credentials", label: "Credentials", icon: Shield },
   { to: "/settings/team", label: "Team & roles", icon: Users },
-  { to: "/settings/validation-plans", label: "Validation plans", icon: FileCode2 },
+  {
+    to: "/settings/validation-plans",
+    label: "Validation plans",
+    icon: FileCode2,
+  },
   { to: "/settings/webhooks", label: "Webhooks", icon: Bell },
   { to: "/settings/audit-log", label: "Audit log", icon: ScrollText },
   { to: "/settings/runners", label: "Agent (Pro+)", icon: Server },
-  { label: "API tokens", soon: true },
 ];
 
 const resourceLinks: Array<{
@@ -94,7 +105,13 @@ const resourceLinks: Array<{
 
 const sidebarGroupRoutes: Record<string, string[]> = {
   overview: ["/"],
-  "recovery-operations": ["/workflows", "/schedules", "/evidence", "/recovery-instances", "/recovery-operations"],
+  "recovery-operations": [
+    "/workflows",
+    "/schedules",
+    "/evidence",
+    "/recovery-instances",
+    "/recovery-operations",
+  ],
   infrastructure: ["/databases"],
   settings: [
     "/settings/general",
@@ -185,8 +202,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </SidebarNavGroup>
           ))}
 
-          <ProductGuideLauncher onOpen={() => setGuideOpen(true)} />
-
           <SidebarNavGroup
             label="Settings"
             open={isOpen("settings")}
@@ -236,7 +251,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/60 hover:text-white"
               >
                 {link.icon ? (
-                  <link.icon size={16} className={link.muted ? "opacity-70" : undefined} />
+                  <link.icon
+                    size={16}
+                    className={link.muted ? "opacity-70" : undefined}
+                  />
                 ) : (
                   <span className="flex h-4 w-4 items-center justify-center text-[10px] font-bold text-slate-500">
                     ↗
@@ -276,7 +294,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <ProductGuideWizard open={guideOpen} onClose={() => setGuideOpen(false)} />
+      <ProductGuideWizard
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+      />
       <BackgroundWorkDrawer />
     </div>
   );

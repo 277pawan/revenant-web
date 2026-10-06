@@ -120,6 +120,7 @@ export function RecoveryPointsPanel({
       );
       navigate(`/workflows/${databaseId}/runs/${res.job.id}`);
     } catch (err) {
+      void load();
       toast.error(
         "Could not verify",
         err instanceof Error ? err.message : "Request failed"
@@ -136,15 +137,15 @@ export function RecoveryPointsPanel({
       const result = await api.deleteRecoveryPoint(deleteTarget.id);
       if (result.deletedFromAws) {
         toast.success("Snapshot deleted", `${deleteTarget.snapshotIdentifier} was removed from AWS and this list.`);
+        setPoints((current) => current.filter((point) => point.id !== deleteTarget.id));
+        onRecoveryPointDeleted?.(deleteTarget.id);
       } else {
         toast.warning(
-          "Removed from recovery points",
-          "AWS retains this automated snapshot until its retention policy expires."
+          "Snapshot retained by AWS",
+          "Automated snapshots cannot be deleted manually. This snapshot remains available in recovery points."
         );
       }
       setDeleteTarget(null);
-      setPoints((current) => current.filter((point) => point.id !== deleteTarget.id));
-      onRecoveryPointDeleted?.(deleteTarget.id);
     } catch (err) {
       toast.error(
         "Could not delete snapshot",
@@ -400,12 +401,13 @@ export function RecoveryPointsPanel({
           key={recoveringPoint.id}
           point={recoveringPoint}
           onClose={() => setRecoveringPoint(null)}
+          onRefreshRecoveryPoints={() => void load()}
         />
       )}
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete or remove recovery point?"
-        description={`Revenant will delete ${deleteTarget?.snapshotIdentifier ?? "the snapshot"} from AWS when it is a manual snapshot. AWS-managed automated snapshots cannot be individually deleted; those will only be removed from this active list and remain in AWS until retention expires. Existing verification and restored-instance history is retained.`}
+        description={`Revenant will delete ${deleteTarget?.snapshotIdentifier ?? "the snapshot"} from AWS when it is a manual snapshot. AWS-managed automated snapshots cannot be individually deleted and will remain in recovery points until AWS removes them. Existing verification and restored-instance history is retained.`}
         confirmLabel="Continue"
         danger
         loading={deleting}
@@ -419,9 +421,11 @@ export function RecoveryPointsPanel({
 function RecoverFromPointDialog({
   point,
   onClose,
+  onRefreshRecoveryPoints,
 }: {
   point: RecoveryPointResource;
   onClose: () => void;
+  onRefreshRecoveryPoints: () => void;
 }) {
   const toast = useToast();
   const suggestedTargetIdentifier = `revenant-restore-${point.id.slice(0, 8)}`;
@@ -529,6 +533,7 @@ function RecoverFromPointDialog({
       setHasStartedRecovery(true);
       toast.success("Recovery restore started", `AWS is creating ${targetIdentifier}.`);
     } catch (err) {
+      onRefreshRecoveryPoints();
       toast.error(
         "Could not start recovery",
         err instanceof Error ? err.message : "AWS restore request failed"
