@@ -365,7 +365,7 @@ export function RecoveryOperationsPage() {
                                   <input
                                     type="number"
                                     min={10}
-                                    max={1440}
+                                    max={2147483647}
                                     value={policy.lifetime}
                                     onChange={(event) => updatePolicy(database.id, { lifetime: Number(event.target.value) })}
                                     className="mt-1 block w-36 rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
@@ -382,7 +382,7 @@ export function RecoveryOperationsPage() {
                                 </label>
                                 {policy.cleanupCustomerSnapshots && (
                                   <p className="max-w-lg text-xs text-amber-800">
-                                    Manual snapshots older than this retention may be deleted on the next reconciliation. This includes existing customer-created manual snapshots. AWS automated snapshots and the source database are excluded.
+                                    This allows deletion of existing customer-created manual snapshots once they exceed this retention. Deletion only runs when an external scheduler calls the API&apos;s authenticated <code>/api/v1/internal/recovery/reconcile</code> endpoint; configure Cloud Scheduler (or equivalent) to call it every five minutes. Without that schedule, snapshots will not be deleted. AWS automated snapshots and the source database are excluded.
                                   </p>
                                 )}
                               </>
@@ -391,7 +391,7 @@ export function RecoveryOperationsPage() {
                           <button
                             type="button"
                             onClick={() => void save(database)}
-                            disabled={!dirty || policy?.saving || (policy?.expireResources && (!Number.isInteger(policy?.lifetime) || policy.lifetime < 10 || policy.lifetime > 1440))}
+                            disabled={!dirty || policy?.saving || (policy?.expireResources && (!Number.isInteger(policy?.lifetime) || policy.lifetime < 10 || policy.lifetime > 2147483647))}
                             className="rounded-md bg-brand px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {policy?.saving ? "Saving…" : "Save settings"}
@@ -417,7 +417,7 @@ export function RecoveryOperationsPage() {
         title="Enable deletion of customer snapshots?"
         description={
           snapshotCleanupConfirmation
-            ? `This will allow Revenant to delete non-Revenant manual RDS snapshots for source "${snapshotCleanupConfirmation.rdsSourceIdentifier}" that are older than the selected ${policies[snapshotCleanupConfirmation.id]?.lifetime ?? 60}-minute retention. Existing eligible snapshots may be deleted at the next reconciliation. The source database and AWS automated snapshots will not be deleted.`
+            ? `This will allow Revenant to delete non-Revenant manual RDS snapshots for source "${snapshotCleanupConfirmation.rdsSourceIdentifier}" that are older than the selected ${policies[snapshotCleanupConfirmation.id]?.lifetime ?? 60}-minute retention. Deletion only runs when an external scheduler calls the API's authenticated /api/v1/internal/recovery/reconcile endpoint; configure Cloud Scheduler or equivalent to call it every five minutes. Without that schedule, snapshots will not be deleted. The source database and AWS automated snapshots will not be deleted.`
             : ""
         }
         confirmLabel="Enable snapshot deletion"
