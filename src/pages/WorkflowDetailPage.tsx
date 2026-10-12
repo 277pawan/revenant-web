@@ -67,7 +67,7 @@ function parseTab(value: string | null): WorkflowTabId {
 export function WorkflowDetailPage() {
   const { databaseId } = useParams<{ databaseId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = parseTab(searchParams.get("tab"));
+  const requestedTab = parseTab(searchParams.get("tab"));
   const { user } = useAuth();
   const toast = useToast();
 
@@ -86,6 +86,10 @@ export function WorkflowDetailPage() {
   const canDownload = user ? roleHasPermission(user.role, "evidence:read") : false;
 
   const [service, setService] = useState<PlanServiceResource | null>(null);
+  const activeTab =
+    service?.engine === "mongodb" && requestedTab === "recovery-points"
+      ? "overview"
+      : requestedTab;
   const [jobs, setJobs] = useState<JobResource[]>([]);
   const [jobsPagination, setJobsPagination] = useState<PaginationMeta>({
     page: 1,
@@ -122,7 +126,7 @@ export function WorkflowDetailPage() {
       ]);
       const found = servicesRes.services.find((s) => s.databaseId === databaseId);
       if (found) {
-        setService(found);
+        setService({ ...found, engine: databaseRes.database.engine });
       } else {
         const { database } = databaseRes;
         let planName = database.validationPlanName ?? "default";
@@ -141,6 +145,7 @@ export function WorkflowDetailPage() {
         setService({
           databaseId: database.id,
           databaseName: database.name,
+          engine: database.engine,
           planName,
           planVersion,
           planUpdatedAt,
@@ -314,8 +319,10 @@ export function WorkflowDetailPage() {
         ? `Using saved validation plan v${service.planVersion}.`
         : "Using the latest saved validation plan.";
       toast.success(
-        "Full restore drill queued",
-        `${planHint} Snapshot → restore → validate → cleanup.`
+        service?.engine === "mongodb" ? "Read-only checks queued" : "Full restore drill queued",
+        service?.engine === "mongodb"
+          ? planHint
+          : `${planHint} Snapshot → restore → validate → cleanup.`
       );
       await Promise.all([loadJobs(), loadActiveJobs()]);
     } catch (err) {
@@ -401,21 +408,31 @@ export function WorkflowDetailPage() {
         canDownload={canDownload}
         running={running}
         awsMode={awsMode}
+        engine={service.engine}
         onRunDrill={() => void runWorkflow()}
       />
 
-      <WorkflowDetailTabs active={activeTab} onChange={setActiveTab} />
+      <WorkflowDetailTabs
+        active={activeTab}
+        onChange={setActiveTab}
+        hideRecoveryPoints={service.engine === "mongodb"}
+      />
 
       <WorkflowTabPanel active={activeTab} id="overview">
         <div className="mb-6 grid gap-4 xl:grid-cols-2">
-          {readiness ? (
+          {service.engine === "mongodb" ? (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-5 text-sm text-sky-900">
+              MongoDB runs direct read-only validation checks. Backup recovery points and Atlas
+              restore drills are not available for this connection.
+            </div>
+          ) : readiness ? (
             <RecoveryReadinessCard data={readiness} compact />
           ) : (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
               Run a drill to calculate recovery readiness.
             </div>
           )}
-          <RecoveryPointsPanel
+          {service.engine !== "mongodb" && <RecoveryPointsPanel
             databaseId={service.databaseId}
             awsMode={awsMode}
             canRun={canRun}
@@ -427,7 +444,7 @@ export function WorkflowDetailPage() {
               setDeletedRecoveryPointIds((current) => [...current, id])
             }
             onViewAll={() => setActiveTab("recovery-points")}
-          />
+          />}
         </div>
         {last?.status === "fail" && (
           <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -438,15 +455,15 @@ export function WorkflowDetailPage() {
             >
               View run details
             </Link>{" "}
-            for the snapshot restore or validation error.
+            for the validation error.
           </div>
         )}
-        <RecoveryCostHint awsMode={awsMode} />
+        {service.engine !== "mongodb" && <RecoveryCostHint awsMode={awsMode} />}
       </WorkflowTabPanel>
 
       <WorkflowTabPanel active={activeTab} id="recovery-points">
         <div className="mb-6">
-          <RecoveryPointsPanel
+          {service.engine !== "mongodb" && <RecoveryPointsPanel
             databaseId={service.databaseId}
             awsMode={awsMode}
             canRun={canRun}
@@ -456,7 +473,7 @@ export function WorkflowDetailPage() {
             onRecoveryPointDeleted={(id) =>
               setDeletedRecoveryPointIds((current) => [...current, id])
             }
-          />
+          />}
         </div>
       </WorkflowTabPanel>
 

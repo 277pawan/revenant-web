@@ -13,16 +13,18 @@ const TABS: { id: WorkflowTabId; label: string }[] = [
 export function WorkflowDetailTabs({
   active,
   onChange,
+  hideRecoveryPoints = false,
 }: {
   active: WorkflowTabId;
   onChange: (tab: WorkflowTabId) => void;
+  hideRecoveryPoints?: boolean;
 }) {
   return (
     <nav
       className="mb-6 flex gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-1"
       aria-label="Workflow sections"
     >
-      {TABS.map((tab) => (
+      {TABS.filter((tab) => !hideRecoveryPoints || tab.id !== "recovery-points").map((tab) => (
         <button
           key={tab.id}
           type="button"

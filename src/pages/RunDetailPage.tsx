@@ -34,6 +34,7 @@ export function RunDetailPage() {
 
   const [job, setJob] = useState<JobDetailResource | null>(null);
   const [service, setService] = useState<PlanServiceResource | null>(null);
+  const [databaseEngine, setDatabaseEngine] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedCheck, setSelectedCheck] = useState<JobResultResource | null>(
@@ -53,8 +54,9 @@ export function RunDetailPage() {
           api.listPlanServices(),
         ]);
         setJob(jobRes.job);
+        const serviceDatabaseId = databaseId ?? jobRes.job.databaseId;
         const svc = servicesRes.services.find(
-          (s) => s.databaseId === (databaseId ?? jobRes.job.databaseId)
+          (s) => s.databaseId === serviceDatabaseId
         );
         setService(svc ?? null);
         setError(null);
@@ -100,6 +102,23 @@ export function RunDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const targetDatabaseId = databaseId ?? job?.databaseId;
+    if (!targetDatabaseId) return;
+    let cancelled = false;
+    void api
+      .getDatabase(targetDatabaseId)
+      .then(({ database }) => {
+        if (!cancelled) setDatabaseEngine(database.engine);
+      })
+      .catch(() => {
+        if (!cancelled) setDatabaseEngine(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [databaseId, job?.databaseId]);
 
   useEffect(() => {
     if (!service || service.recoveryMode !== "aws-rds") {
@@ -159,6 +178,7 @@ export function RunDetailPage() {
   const reportReady =
     job != null && ["pass", "fail", "error"].includes(effectiveStatus);
   const awsMode = service?.recoveryMode === "aws-rds";
+  const mongoMode = databaseEngine === "mongodb" || service?.engine === "mongodb";
   const canRerun =
     canRun && (!awsMode || awsSourceStatus?.state === "available");
 
@@ -171,7 +191,12 @@ export function RunDetailPage() {
         databaseId: targetDatabaseId,
         drillKind: "full",
       });
-      toast.success("Validation queued", "A new full validation drill has been queued.");
+      toast.success(
+        mongoMode ? "Read-only checks queued" : "Validation queued",
+        mongoMode
+          ? "A new direct MongoDB validation run has been queued."
+          : "A new full validation drill has been queued."
+      );
       navigate(`/workflows/${nextJob.databaseId}/runs/${nextJob.id}`);
     } catch (err) {
       toast.error(
@@ -390,7 +415,7 @@ export function RunDetailPage() {
             </div>
           </div>
 
-          {job.results.some(
+          {!mongoMode && job.results.some(
             (r) => r.checkType === "snapshot" && r.status === "fail"
           ) && (
             <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">

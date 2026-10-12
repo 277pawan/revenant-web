@@ -13,6 +13,7 @@ import {
   wizardDefaults,
   type DatabaseWizardValues,
 } from "../lib/forms/database.schema";
+import type { DatabaseEngine } from "../types/api";
 
 export function DatabaseEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ export function DatabaseEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [hasAwsCredentials, setHasAwsCredentials] = useState(false);
+  const [initialEngine, setInitialEngine] = useState<DatabaseEngine>("postgres");
 
   const {
     register,
@@ -40,6 +42,7 @@ export function DatabaseEditPage() {
   });
 
   const recoveryMode = watch("recoveryMode");
+  const engine = watch("engine");
 
   useEffect(() => {
     if (!id) return;
@@ -49,11 +52,15 @@ export function DatabaseEditPage() {
       .then(({ database }) => {
         setHasCredentials(database.hasCredentials);
         setHasAwsCredentials(database.hasAwsCredentials);
+        const databaseEngine: DatabaseEngine =
+          database.engine === "mongodb" ? "mongodb" : database.engine === "mysql" ? "mysql" : "postgres";
+        setInitialEngine(databaseEngine);
         reset({
           name: database.name,
           description: database.description ?? "",
-          engine: database.engine === "mysql" ? "mysql" : "postgres",
-          recoveryMode: database.recoveryMode ?? "direct",
+          engine: databaseEngine,
+          recoveryMode: databaseEngine === "mongodb" ? "direct" : database.recoveryMode ?? "direct",
+          connectionString: "",
           host: database.host ?? "",
           port: database.port ?? (database.engine === "mysql" ? 3306 : 5432),
           databaseName: database.databaseName ?? "",
@@ -88,6 +95,16 @@ export function DatabaseEditPage() {
       const awsSessionToken = values.awsSessionToken.trim();
 
       if (
+        values.engine === "mongodb" &&
+        !values.connectionString.trim() &&
+        (initialEngine !== "mongodb" || !hasCredentials)
+      ) {
+        setError("Enter a MongoDB connection URI to switch this database to MongoDB.");
+        setSaving(false);
+        return;
+      }
+
+      if (
         values.recoveryMode === "aws-rds" &&
         !hasAwsCredentials &&
         (!awsKey || !awsSecret)
@@ -97,36 +114,46 @@ export function DatabaseEditPage() {
         return;
       }
 
-      await api.updateDatabase(id, {
-        name: values.name.trim(),
-        engine: values.engine,
-        recoveryMode: values.recoveryMode,
-        host:
-          values.recoveryMode === "direct" || values.recoveryMode === "aws-rds"
-            ? values.host.trim() || null
-            : null,
-        port: values.port,
-        databaseName: values.databaseName.trim() || null,
-        username: values.username.trim() || null,
-        sslMode: values.sslMode,
-        region: values.region.trim() || null,
-        rdsSourceIdentifier:
-          values.recoveryMode === "aws-rds" ? values.rdsSourceIdentifier.trim() : null,
-        recoveryUseFreetier: values.recoveryMode === "aws-rds" ? values.recoveryUseFreetier : false,
-        recoverySandboxInstanceClass:
-          values.recoveryMode === "aws-rds" && values.recoverySandboxInstanceClass.trim()
-            ? values.recoverySandboxInstanceClass.trim()
-            : null,
-        description: values.description.trim() || null,
-        ...(password ? { password } : {}),
-        ...(awsKey && awsSecret
-          ? {
-              awsAccessKeyId: awsKey,
-              awsSecretAccessKey: awsSecret,
-              ...(awsSessionToken ? { awsSessionToken } : {}),
-            }
-          : {}),
-      });
+      if (values.engine === "mongodb") {
+        await api.updateDatabase(id, {
+          name: values.name.trim(),
+          engine: "mongodb",
+          recoveryMode: "direct",
+          databaseName: values.databaseName.trim(),
+          ...(values.connectionString.trim()
+            ? { connectionString: values.connectionString.trim() }
+            : {}),
+          description: values.description.trim() || null,
+        });
+      } else {
+        await api.updateDatabase(id, {
+          name: values.name.trim(),
+          engine: values.engine,
+          recoveryMode: values.recoveryMode,
+          host: values.host.trim() || null,
+          port: values.port,
+          databaseName: values.databaseName.trim() || null,
+          username: values.username.trim() || null,
+          sslMode: values.sslMode,
+          region: values.region.trim() || null,
+          rdsSourceIdentifier:
+            values.recoveryMode === "aws-rds" ? values.rdsSourceIdentifier.trim() : null,
+          recoveryUseFreetier: values.recoveryMode === "aws-rds" ? values.recoveryUseFreetier : false,
+          recoverySandboxInstanceClass:
+            values.recoveryMode === "aws-rds" && values.recoverySandboxInstanceClass.trim()
+              ? values.recoverySandboxInstanceClass.trim()
+              : null,
+          description: values.description.trim() || null,
+          ...(password ? { password } : {}),
+          ...(awsKey && awsSecret
+            ? {
+                awsAccessKeyId: awsKey,
+                awsSecretAccessKey: awsSecret,
+                ...(awsSessionToken ? { awsSessionToken } : {}),
+              }
+            : {}),
+        });
+      }
       navigate("/databases");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
@@ -147,12 +174,17 @@ export function DatabaseEditPage() {
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Edit database</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Update connection metadata. Leave password blank to keep the existing encrypted secret
-          {hasCredentials ? " (currently set)." : " (none stored yet)."}
+          {engine === "mongodb"
+            ? "Update the MongoDB connection. Leave the URI blank to keep the current encrypted secret."
+            : `Update connection metadata. Leave password blank to keep the existing encrypted secret${
+                hasCredentials ? " (currently set)." : " (none stored yet)."
+              }`}
           {recoveryMode === "aws-rds" &&
             (hasAwsCredentials
               ? " AWS keys are stored — enter new values only to rotate."
               : " Add AWS keys below.")}
+          {engine === "mongodb" &&
+            " MongoDB uses direct read-only checks; Atlas backup restore is not supported. The saved URI is never displayed."}
         </p>
       </div>
 
@@ -184,25 +216,106 @@ export function DatabaseEditPage() {
                 {...register("engine", {
                   onChange: (event) => {
                     const nextEngine = event.target.value as DatabaseWizardValues["engine"];
-                    setValue("port", nextEngine === "mysql" ? 3306 : 5432);
+                    if (nextEngine === "mongodb") {
+                      setValue("recoveryMode", "direct");
+                    } else {
+                      setValue("port", nextEngine === "mysql" ? 3306 : 5432);
+                      setValue("connectionString", "");
+                    }
                   },
                 })}
               >
                 <option value="postgres">PostgreSQL</option>
                 <option value="mysql">MySQL</option>
+                <option value="mongodb">MongoDB</option>
               </Select>
             </Field>
 
             <Field label="Validation mode" htmlFor="recoveryMode" error={errors.recoveryMode?.message}>
-              <Select id="recoveryMode" invalid={!!errors.recoveryMode} {...register("recoveryMode")}>
-                <option value="direct">Direct — connect to live database</option>
-                <option value="aws-rds">AWS RDS — snapshot restore drill</option>
+              <Select
+                id="recoveryMode"
+                invalid={!!errors.recoveryMode}
+                {...register("recoveryMode", {
+                  onChange: (event) => {
+                    if (engine === "mongodb" && event.target.value === "aws-rds") {
+                      setValue("recoveryMode", "direct");
+                    }
+                  },
+                })}
+              >
+                <option value="direct">
+                  {engine === "mongodb" ? "Direct — read-only MongoDB checks" : "Direct — connect to live database"}
+                </option>
+                <option value="aws-rds" disabled={engine === "mongodb"}>
+                  AWS RDS — snapshot restore drill (SQL only)
+                </option>
               </Select>
             </Field>
 
-            <Field label="Region" htmlFor="region" error={errors.region?.message}>
-              <Input id="region" invalid={!!errors.region} {...register("region")} />
-            </Field>
+            {engine === "mongodb" && (
+              <div className="sm:col-span-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                <p className="font-medium">MongoDB uses direct read-only checks only</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-emerald-900">
+                  <li>Grant read access only to the database and collections you validate.</li>
+                  <li>Do not grant write, admin, backup, or restore privileges.</li>
+                  <li>Allowlist Cloud’s outbound IP in Atlas to show connectivity status. Self-hosted runners also need their own network access allowed for validation jobs.</li>
+                </ul>
+                <p className="mt-2 text-xs">
+                  Atlas backup restore and snapshot workflows are not supported for MongoDB.
+                </p>
+              </div>
+            )}
+
+            {engine !== "mongodb" && (
+              <Field label="Region" htmlFor="region" error={errors.region?.message}>
+                <Input id="region" invalid={!!errors.region} {...register("region")} />
+              </Field>
+            )}
+
+            {engine === "mongodb" && (
+              <>
+                <Field
+                  label="MongoDB database name"
+                  htmlFor="databaseName"
+                  required
+                  hint="The actual database inside Atlas, not the display name shown in Revenant. Find it under Database → Collections."
+                  error={errors.databaseName?.message}
+                >
+                  <Input
+                    id="databaseName"
+                    invalid={!!errors.databaseName}
+                    placeholder="myapp"
+                    {...register("databaseName")}
+                  />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field
+                    label="MongoDB connection URI"
+                    htmlFor="connectionString"
+                    required={!hasCredentials || initialEngine !== "mongodb"}
+                    hint={
+                      hasCredentials && initialEngine === "mongodb"
+                        ? "Leave blank to keep the current encrypted URI. Enter a new URI only to rotate it; the saved URI is never shown."
+                        : "Use mongodb:// or mongodb+srv://. URI is encrypted by the backend and never returned in database details."
+                    }
+                    error={errors.connectionString?.message}
+                  >
+                    <SecretInput
+                      id="connectionString"
+                      invalid={!!errors.connectionString}
+                      autoComplete="new-password"
+                      placeholder={
+                        hasCredentials && initialEngine === "mongodb"
+                          ? "Stored securely — enter only to replace"
+                          : "mongodb+srv://cluster.example.mongodb.net/database"
+                      }
+                      className="font-mono text-xs"
+                      {...register("connectionString")}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
 
             {recoveryMode === "aws-rds" && (
               <>
@@ -264,7 +377,7 @@ export function DatabaseEditPage() {
               </>
             )}
 
-            {recoveryMode === "direct" && (
+            {engine !== "mongodb" && recoveryMode === "direct" && (
               <>
                 <Field label="Host" htmlFor="host" required error={errors.host?.message}>
                   <Input
@@ -280,24 +393,24 @@ export function DatabaseEditPage() {
               </>
             )}
 
-            <Field
+            {engine !== "mongodb" && <Field
               label="Database name"
               htmlFor="databaseName"
               required={recoveryMode === "aws-rds"}
               error={errors.databaseName?.message}
             >
               <Input id="databaseName" invalid={!!errors.databaseName} {...register("databaseName")} />
-            </Field>
-            <Field
+            </Field>}
+            {engine !== "mongodb" && <Field
               label="Username"
               htmlFor="username"
               required={recoveryMode === "aws-rds"}
               error={errors.username?.message}
             >
               <Input id="username" invalid={!!errors.username} {...register("username")} />
-            </Field>
+            </Field>}
 
-            <div className="sm:col-span-2">
+            {engine !== "mongodb" && <div className="sm:col-span-2">
               <Field
                 label={recoveryMode === "aws-rds" ? "RDS master password" : "Password"}
                 htmlFor="password"
@@ -312,7 +425,7 @@ export function DatabaseEditPage() {
                   {...register("password")}
                 />
               </Field>
-            </div>
+            </div>}
 
             {recoveryMode === "aws-rds" && (
               <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/80 p-4">

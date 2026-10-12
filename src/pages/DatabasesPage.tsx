@@ -24,6 +24,7 @@ import {
   roleHasPermission,
   type AwsSourceStatus,
   type DatabaseResource,
+  type MongoConnectivityStatus,
   type PaginationMeta,
 } from "../types/api";
 
@@ -37,6 +38,9 @@ const emptyPagination: PaginationMeta = {
 type AwsSourceDisplayStatus =
   | AwsSourceStatus
   | (Partial<Omit<AwsSourceStatus, "state">> & { state: "checking" });
+type MongoConnectivityDisplayStatus =
+  | MongoConnectivityStatus
+  | { state: "checking"; checkedAt?: string; message?: string | null };
 
 export function DatabasesPage() {
   const { user } = useAuth();
@@ -56,6 +60,9 @@ export function DatabasesPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [awsSourceStatuses, setAwsSourceStatuses] = useState<
     Record<string, AwsSourceDisplayStatus>
+  >({});
+  const [mongoStatuses, setMongoStatuses] = useState<
+    Record<string, MongoConnectivityDisplayStatus>
   >({});
 
   const load = useCallback(async (nextPage: number) => {
@@ -123,6 +130,51 @@ export function DatabasesPage() {
     };
   }, [databases]);
 
+  useEffect(() => {
+    const targets = databases.filter((db) => db.engine === "mongodb");
+    let nextIndex = 0;
+    let cancelled = false;
+
+    setMongoStatuses(
+      Object.fromEntries(targets.map((db) => [db.id, { state: "checking" as const }]))
+    );
+
+    async function checkNext() {
+      while (!cancelled) {
+        const database = targets[nextIndex++];
+        if (!database) return;
+
+        try {
+          const { status } = await api.getMongoConnectivityStatus(database.id);
+          if (!cancelled) {
+            setMongoStatuses((current) => ({ ...current, [database.id]: status }));
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setMongoStatuses((current) => ({
+              ...current,
+              [database.id]: {
+                state: "unknown",
+                checkedAt: new Date().toISOString(),
+                message:
+                  err instanceof Error
+                    ? err.message
+                    : "Could not check MongoDB connectivity.",
+              },
+            }));
+          }
+        }
+      }
+    }
+
+    void Promise.all(
+      Array.from({ length: Math.min(3, targets.length) }, () => checkNext())
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [databases]);
+
   const filtered = databases.filter((db) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -132,6 +184,12 @@ export function DatabasesPage() {
       (db.region ?? "").toLowerCase().includes(q)
     );
   });
+  const engineSummary =
+    [...new Set(databases.map((database) => database.engine))]
+      .map((engine) =>
+        engine === "mongodb" ? "MongoDB" : engine === "mysql" ? "MySQL" : "Postgres"
+      )
+      .join(", ") || "—";
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -166,7 +224,10 @@ export function DatabasesPage() {
     setError(null);
     try {
       const { job } = await api.createJob({ databaseId: db.id, drillKind: "full" });
-      toast.success("Full restore drill queued", `Job queued for ${db.name}.`);
+      toast.success(
+        db.engine === "mongodb" ? "Read-only checks queued" : "Full restore drill queued",
+        `Job queued for ${db.name}.`
+      );
       navigate(`/workflows/${job.databaseId}/runs/${job.id}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to start job";
@@ -181,7 +242,7 @@ export function DatabasesPage() {
     <AppShell>
       <PageHeader
         title="Databases"
-        description="Register the Postgres or AWS RDS connections you want to protect. Credentials stay encrypted — Revenant never shows passwords in the browser."
+        description="Register SQL recovery targets or MongoDB connections for direct read-only checks. Credentials stay encrypted and are never shown in database details."
       >
         {canWrite && (
           <div className="flex flex-wrap gap-2">
@@ -214,7 +275,7 @@ export function DatabasesPage() {
             label: "With validation plan",
             value: databases.filter((d) => d.hasValidationPlan).length,
           },
-          { label: "Engine", value: "Postgres" },
+          { label: "Engine", value: engineSummary },
         ].map((stat) => (
           <div
             key={stat.label}
@@ -265,7 +326,7 @@ export function DatabasesPage() {
             </div>
             <h2 className="text-lg font-semibold text-slate-900">No databases yet</h2>
             <p className="mt-2 max-w-md text-sm text-slate-600">
-              Register a Postgres connection, then attach a validation plan and invite your team.
+              Register a SQL recovery target or MongoDB read-only check connection, then attach a validation plan.
             </p>
             {canWrite && (
               <div className="mt-6 flex flex-wrap justify-center gap-3">
@@ -309,7 +370,7 @@ export function DatabasesPage() {
                   <tr key={db.id} className="hover:bg-slate-50/80">
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-900">{db.name}</div>
-                      {db.databaseName && (
+                      {db.engine !== "mongodb" && db.databaseName && (
                         <div className="font-mono text-xs text-slate-500">{db.databaseName}</div>
                       )}
                       {db.recoveryMode === "aws-rds" && (
@@ -370,13 +431,56 @@ export function DatabasesPage() {
                           )}
                         </div>
                       )}
+                      {db.engine === "mongodb" && (
+                        <div className="mt-1">
+                          {mongoStatuses[db.id]?.state === "checking" ||
+                          !mongoStatuses[db.id] ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                              <Loader2 size={13} className="animate-spin" />
+                              Checking MongoDB connection…
+                            </span>
+                          ) : mongoStatuses[db.id].state === "available" ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"
+                              title={`Checked ${new Date(mongoStatuses[db.id].checkedAt ?? Date.now()).toLocaleString()}`}
+                            >
+                              <CheckCircle2 size={13} />
+                              MongoDB reachable from Cloud
+                            </span>
+                          ) : (
+                            <span
+                              className={`inline-flex items-center gap-1 text-xs font-medium ${
+                                mongoStatuses[db.id].state === "unavailable"
+                                  ? "text-red-700"
+                                  : "text-amber-700"
+                              }`}
+                              title={mongoStatuses[db.id].message ?? undefined}
+                            >
+                              <AlertTriangle size={13} />
+                              {mongoStatuses[db.id].state === "unavailable"
+                                ? "MongoDB unavailable"
+                                : mongoStatuses[db.id].state === "not_configured"
+                                  ? "MongoDB setup incomplete"
+                                  : "MongoDB status unknown"}
+                            </span>
+                          )}
+                          {mongoStatuses[db.id]?.message &&
+                            mongoStatuses[db.id]?.state !== "available" && (
+                              <span className="mt-0.5 block max-w-xs break-words text-xs text-slate-600">
+                                {mongoStatuses[db.id]?.message}
+                              </span>
+                            )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-700">
                       {db.recoveryMode === "aws-rds"
                         ? db.rdsSourceIdentifier ?? "—"
-                        : db.host
-                          ? `${db.host}:${db.port ?? 5432}`
-                          : "—"}
+                        : db.engine === "mongodb"
+                          ? "MongoDB · URI stored securely"
+                          : db.host
+                            ? `${db.host}:${db.port ?? 5432}`
+                            : "—"}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{db.region ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -384,7 +488,7 @@ export function DatabasesPage() {
                         {db.hasCredentials ? (
                           <span className="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
                             <Lock size={12} />
-                            DB
+                            {db.engine === "mongodb" ? "MongoDB URI" : "DB"}
                           </span>
                         ) : (
                           <span className="w-fit rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
@@ -444,7 +548,7 @@ export function DatabasesPage() {
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-brand hover:bg-blue-50 disabled:opacity-50"
                           >
                             <Play size={14} />
-                            Run
+                            {db.engine === "mongodb" ? "Run checks" : "Run"}
                           </button>
                         )}
                         {canWrite && (

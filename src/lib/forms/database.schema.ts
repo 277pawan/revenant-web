@@ -7,17 +7,14 @@ const baseDatabaseFields = z.object({
     .min(2, "Display name must be at least 2 characters")
     .max(255, "Display name is too long"),
   description: z.string().max(2000, "Description is too long"),
-  engine: z.enum(["postgres", "mysql"]),
+  engine: z.enum(["postgres", "mysql", "mongodb"]),
   recoveryMode: z.enum(["direct", "aws-rds"]),
-  host: z.string().trim().max(255, "Host is too long"),
-  port: z.coerce
-    .number({ invalid_type_error: "Port must be a number" })
-    .int("Port must be a whole number")
-    .min(1, "Port must be between 1 and 65535")
-    .max(65535, "Port must be between 1 and 65535"),
-  databaseName: z.string().trim().max(255, "Database name is too long"),
-  username: z.string().trim().max(255, "Username is too long"),
-  password: z.string().max(512, "Password is too long"),
+  connectionString: z.string(),
+  host: z.string().trim(),
+  port: z.coerce.number(),
+  databaseName: z.string().trim(),
+  username: z.string().trim(),
+  password: z.string(),
   sslMode: z.enum(["require", "prefer", "disable"]),
   region: z.string().max(50, "Region is too long"),
   rdsSourceIdentifier: z.string().max(255, "RDS instance ID is too long"),
@@ -32,8 +29,84 @@ const baseDatabaseFields = z.object({
 function refineRecoveryMode(
   data: z.infer<typeof baseDatabaseFields>,
   ctx: z.RefinementCtx,
-  requireAwsKeys: boolean
+  requireAwsKeys: boolean,
+  requireMongoUri: boolean
 ) {
+  if (data.engine === "mongodb") {
+    if (data.recoveryMode !== "direct") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "MongoDB supports direct read-only checks only; Atlas restore is not available",
+        path: ["recoveryMode"],
+      });
+    }
+    const uri = data.connectionString.trim();
+    if (requireMongoUri || uri) {
+      const match = /^mongodb(?:\+srv)?:\/\/([^/?#\s]+)(?:[/?#]|$)/i.exec(uri);
+      const hostList = match?.[1].split("@").at(-1)?.split(",");
+      if (
+        !match ||
+        !hostList?.length ||
+        hostList.some((host) => !host || host.startsWith(":")) ||
+        /\s/.test(uri) ||
+        uri.length > 2048
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Enter a valid mongodb:// or mongodb+srv:// connection string",
+          path: ["connectionString"],
+        });
+      }
+    }
+    if (!data.databaseName.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "MongoDB database name is required",
+        path: ["databaseName"],
+      });
+    }
+    return;
+  }
+
+  if (data.connectionString.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "A MongoDB connection string is only used for MongoDB",
+      path: ["connectionString"],
+    });
+  }
+  if (data.host.length > 255) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Host is too long", path: ["host"] });
+  }
+  if (!Number.isInteger(data.port) || data.port < 1 || data.port > 65535) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Port must be between 1 and 65535",
+      path: ["port"],
+    });
+  }
+  if (data.databaseName.length > 255) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Database name is too long",
+      path: ["databaseName"],
+    });
+  }
+  if (data.username.length > 255) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Username is too long",
+      path: ["username"],
+    });
+  }
+  if (data.password.length > 512) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Password is too long",
+      path: ["password"],
+    });
+  }
+
   if (data.recoveryMode === "direct") {
     if (!data.host.trim()) {
       ctx.addIssue({
@@ -124,7 +197,12 @@ function refineRecoveryMode(
 
 /** Create wizard — AWS keys required when mode is aws-rds */
 export const databaseWizardSchema = baseDatabaseFields.superRefine((data, ctx) => {
-  refineRecoveryMode(data, ctx, data.recoveryMode === "aws-rds");
+  refineRecoveryMode(
+    data,
+    ctx,
+    data.recoveryMode === "aws-rds",
+    data.engine === "mongodb"
+  );
   if (data.recoveryMode === "aws-rds" && !data.password.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -136,7 +214,7 @@ export const databaseWizardSchema = baseDatabaseFields.superRefine((data, ctx) =
 
 /** Edit form — AWS keys optional when already stored (validated in page if missing) */
 export const databaseEditSchema = baseDatabaseFields.superRefine((data, ctx) => {
-  refineRecoveryMode(data, ctx, false);
+  refineRecoveryMode(data, ctx, false, false);
 });
 
 export type DatabaseWizardValues = z.infer<typeof databaseWizardSchema>;
@@ -146,6 +224,7 @@ export const wizardDefaults: DatabaseWizardValues = {
   description: "",
   engine: "postgres",
   recoveryMode: "aws-rds",
+  connectionString: "",
   host: "",
   port: 5432,
   databaseName: "",
@@ -165,6 +244,7 @@ export const wizardDefaults: DatabaseWizardValues = {
 export const stepFields: Record<1 | 2 | 3 | 4, (keyof DatabaseWizardValues)[]> = {
   1: ["name", "description", "engine", "region", "recoveryMode"],
   2: [
+    "connectionString",
     "host",
     "port",
     "databaseName",

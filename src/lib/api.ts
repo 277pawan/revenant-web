@@ -215,6 +215,12 @@ export const api = {
     return request(`/api/v1/databases/${databaseId}/aws-status`);
   },
 
+  getMongoConnectivityStatus(
+    databaseId: string
+  ): Promise<{ status: import("../types/api").MongoConnectivityStatus }> {
+    return request(`/api/v1/databases/${databaseId}/mongodb-status`);
+  },
+
   getDatabaseReadiness(
     id: string
   ): Promise<{ readiness: import("../types/api").RecoveryReadinessResource }> {

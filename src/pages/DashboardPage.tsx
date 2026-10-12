@@ -83,7 +83,7 @@ function FleetRow({ row }: { row: DashboardFleetRow }) {
           <div>
             <div className="font-medium text-slate-900">{row.databaseName}</div>
             <div className="text-xs text-slate-500">
-              {row.recoveryMode === "aws-rds" ? "AWS restore drill" : "Direct Postgres"}
+              {row.recoveryMode === "aws-rds" ? "AWS restore drill" : "Direct validation"}
             </div>
           </div>
         </div>

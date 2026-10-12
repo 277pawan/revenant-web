@@ -173,10 +173,18 @@ export function CredentialsPage() {
                 <tr key={db.id} className="border-t border-slate-100">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{db.name}</div>
-                    <div className="text-xs text-slate-500">{db.host ?? db.rdsSourceIdentifier}</div>
+                    <div className="text-xs text-slate-500">
+                      {db.engine === "mongodb"
+                        ? "MongoDB URI stored securely"
+                        : db.host ?? db.rdsSourceIdentifier}
+                    </div>
                   </td>
                   <td className="px-4 py-3 capitalize text-slate-600">
-                    {db.recoveryMode === "aws-rds" ? "AWS RDS" : "Direct"}
+                    {db.recoveryMode === "aws-rds"
+                      ? "AWS RDS"
+                      : db.engine === "mongodb"
+                        ? "MongoDB · read-only direct"
+                        : "Direct"}
                   </td>
                   <td className="px-4 py-3">
                     {db.hasCredentials ? (

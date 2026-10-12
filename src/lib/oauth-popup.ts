@@ -30,22 +30,43 @@ export type OAuthPopupResult =
   | { ok: true; token: string }
   | { ok: false; error: string };
 
-export function waitForOAuthPopupMessage(): Promise<OAuthPopupResult> {
+export function waitForOAuthPopupMessage(popup: Window): Promise<OAuthPopupResult> {
   return new Promise((resolve) => {
-    const handler = (event: MessageEvent) => {
+    let closeTimeout: number | undefined;
+    let closePoll: number;
+    let handler: (event: MessageEvent) => void;
+
+    const finish = (result: OAuthPopupResult) => {
+      window.removeEventListener("message", handler);
+      window.clearInterval(closePoll);
+      if (closeTimeout !== undefined) window.clearTimeout(closeTimeout);
+      resolve(result);
+    };
+
+    handler = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== OAUTH_MESSAGE_TYPE) return;
-      window.removeEventListener("message", handler);
       if (event.data.error) {
-        resolve({ ok: false, error: String(event.data.error) });
+        finish({ ok: false, error: String(event.data.error) });
         return;
       }
       if (event.data.token) {
-        resolve({ ok: true, token: String(event.data.token) });
+        finish({ ok: true, token: String(event.data.token) });
         return;
       }
-      resolve({ ok: false, error: "Sign-in failed. Please try again." });
+      finish({ ok: false, error: "Sign-in failed. Please try again." });
     };
+
+    closePoll = window.setInterval(() => {
+      if (!popup.closed || closeTimeout !== undefined) return;
+      closeTimeout = window.setTimeout(() => {
+        finish({
+          ok: false,
+          error: "Sign-in window was closed before sign-in completed.",
+        });
+      }, 1000);
+    }, 250);
+
     window.addEventListener("message", handler);
   });
 }

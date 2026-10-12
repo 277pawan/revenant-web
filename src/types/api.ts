@@ -240,7 +240,7 @@ export interface RegisterRequest {
   password: string;
 }
 
-export type DatabaseEngine = "postgres" | "mysql";
+export type DatabaseEngine = "postgres" | "mysql" | "mongodb";
 export type SslMode = "require" | "prefer" | "disable";
 export type RecoveryMode = "direct" | "aws-rds";
 
@@ -281,9 +281,16 @@ export interface AwsSourceStatus {
   message: string | null;
 }
 
+export interface MongoConnectivityStatus {
+  state: "available" | "unavailable" | "not_configured" | "unknown";
+  checkedAt: string;
+  message: string | null;
+}
+
 export interface CreateDatabaseRequest {
   name: string;
   engine?: DatabaseEngine;
+  connectionString?: string;
   host?: string;
   port?: number;
   databaseName?: string;
@@ -307,6 +314,7 @@ export interface CreateDatabaseRequest {
 export interface UpdateDatabaseRequest {
   name?: string;
   engine?: DatabaseEngine;
+  connectionString?: string;
   host?: string | null;
   port?: number | null;
   databaseName?: string | null;
@@ -350,6 +358,7 @@ export interface YamlComposerStatus {
 }
 
 export interface GenerateValidationYamlRequest {
+  engine?: "sql" | "postgres" | "mysql" | "mongodb";
   schemaText: string;
   intent?: string;
   planName?: string;
@@ -414,6 +423,7 @@ export interface PlanServiceRunner {
 export interface PlanServiceResource {
   databaseId: string;
   databaseName: string;
+  engine: DatabaseEngine | string;
   planName: string;
   planVersion: number;
   planUpdatedAt: string;

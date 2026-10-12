@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
 
-export type SchemaGuideTab = "prisma" | "drizzle" | "sql" | "rails";
+export type SchemaGuideTab = "prisma" | "drizzle" | "sql" | "rails" | "mongodb";
 
 const GUIDES: Record<
   SchemaGuideTab,
@@ -40,6 +40,15 @@ const GUIDES: Record<
     ],
     command: "cat db/schema.rb",
   },
+  mongodb: {
+    title: "MongoDB Help",
+    bullets: [
+      "The selected MongoDB database sets the YAML engine and MongoDB check types automatically.",
+      "Paste a collection's MongoDB JSON Schema validator from Atlas, or a few representative documents after removing personal data.",
+      "In Atlas, open Database → Collections → your collection → Validation to find a declared validator. If none exists, document samples only suggest possible fields and BSON types.",
+      "Never paste a connection URI, password, or real customer documents. The composer drafts YAML from the structure you provide; it does not connect to Atlas to discover collections.",
+    ],
+  },
 };
 
 const TAB_LABELS: Record<SchemaGuideTab, string> = {
@@ -47,14 +56,20 @@ const TAB_LABELS: Record<SchemaGuideTab, string> = {
   drizzle: "Drizzle",
   sql: "SQL",
   rails: "Rails",
+  mongodb: "MongoDB",
 };
 
 type SchemaPasteGuideProps = {
   activeTab: SchemaGuideTab;
   onTabChange: (tab: SchemaGuideTab) => void;
+  engine: "sql" | "mongodb";
 };
 
-export function SchemaPasteGuide({ activeTab, onTabChange }: SchemaPasteGuideProps) {
+export function SchemaPasteGuide({
+  activeTab,
+  onTabChange,
+  engine,
+}: SchemaPasteGuideProps) {
   const [copied, setCopied] = useState(false);
   const guide = GUIDES[activeTab];
 
@@ -65,7 +80,10 @@ export function SchemaPasteGuide({ activeTab, onTabChange }: SchemaPasteGuidePro
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const tabs: SchemaGuideTab[] = ["prisma", "drizzle", "sql", "rails"];
+  const tabs: SchemaGuideTab[] =
+    engine === "mongodb"
+      ? ["mongodb"]
+      : ["prisma", "drizzle", "sql", "rails"];
 
   return (
     <div className="rounded-lg border border-slate-100 bg-white p-3">
@@ -109,20 +127,25 @@ export function SchemaPasteGuide({ activeTab, onTabChange }: SchemaPasteGuidePro
   );
 }
 
-/** Small links above schema box — Prisma · Drizzle · SQL · Rails */
+/** Small links above the schema box for supported schema formats. */
 export function SchemaSourceTabs({
   active,
   onChange,
+  engine,
 }: {
   active: SchemaGuideTab;
   onChange: (tab: SchemaGuideTab) => void;
+  engine: "sql" | "mongodb";
 }) {
-  const items: Array<{ id: SchemaGuideTab; label: string }> = [
-    { id: "prisma", label: "Prisma" },
-    { id: "drizzle", label: "Drizzle" },
-    { id: "sql", label: "SQL" },
-    { id: "rails", label: "Rails" },
-  ];
+  const items: Array<{ id: SchemaGuideTab; label: string }> =
+    engine === "mongodb"
+      ? [{ id: "mongodb", label: "MongoDB" }]
+      : [
+          { id: "prisma", label: "Prisma" },
+          { id: "drizzle", label: "Drizzle" },
+          { id: "sql", label: "SQL" },
+          { id: "rails", label: "Rails" },
+        ];
   return (
     <div className="flex gap-1.5 text-[11px]">
       {items.map((item) => (

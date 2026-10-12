@@ -79,7 +79,7 @@ function AgentServiceCard({
             <p className="text-sm text-slate-500">{service.databaseName}</p>
             <p className="mt-0.5 text-xs text-slate-400">
               {service.recoveryMode === "direct"
-                ? "Private Postgres — agent required"
+                ? `Direct ${service.engine === "mongodb" ? "MongoDB" : service.engine === "mysql" ? "MySQL" : "Postgres"} — agent required`
                 : "AWS RDS — managed by Revenant (token optional)"}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -154,7 +154,7 @@ function AgentServiceCard({
           <p className="text-xs text-slate-500">
             Last run:{" "}
             <Link
-              to={`/workflows/${lastRun.id}`}
+              to={`/workflows/${service.databaseId}/runs/${lastRun.id}`}
               className="font-medium uppercase text-brand hover:underline"
             >
               {lastRun.status}
@@ -243,7 +243,7 @@ export function RunnersPage() {
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
             <strong className="font-medium text-slate-800">{plan.name} plan.</strong> AWS restore
             drills still run on Revenant&apos;s cloud automatically. Issue a token here only for
-            workflows using <strong className="font-medium">direct Postgres</strong> inside a private
+            workflows using <strong className="font-medium">direct database connections</strong> inside a private
             VPC ({plan.parallelRestoreDrills ?? "unlimited"} parallel drills org-wide).
           </p>
         </div>
@@ -271,9 +271,9 @@ export function RunnersPage() {
         </div>
       ) : directWorkflows.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-600">
-          <p className="font-medium text-slate-900">No private Postgres workflows yet</p>
+          <p className="font-medium text-slate-900">No direct database workflows yet</p>
           <p className="mt-2">
-            Add a database with <strong>Direct Postgres</strong> mode, or run AWS drills from{" "}
+            Add a database with direct connection mode, or run AWS drills from{" "}
             <Link to="/workflows" className="text-brand hover:underline">
               Workflows
             </Link>{" "}

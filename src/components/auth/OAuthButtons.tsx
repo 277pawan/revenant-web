@@ -69,7 +69,7 @@ export function OAuthButtons({
         return;
       }
 
-      const result = await waitForOAuthPopupMessage();
+      const result = await waitForOAuthPopupMessage(popup);
       if (!result.ok) {
         onError(result.error);
         return;
@@ -77,6 +77,10 @@ export function OAuthButtons({
 
       localStorage.setItem("revenant_token", result.token);
       onSuccess();
+    } catch (err) {
+      onError(
+        err instanceof Error ? err.message : "Could not start sign-in. Please try again."
+      );
     } finally {
       setBusyProvider(null);
     }

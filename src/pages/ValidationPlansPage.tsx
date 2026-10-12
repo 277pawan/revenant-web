@@ -25,6 +25,7 @@ import { useAuth } from "../lib/auth";
 import {
   roleHasPermission,
   type DatabaseResource,
+  type DatabaseEngine,
   type PaginationMeta,
   type ValidationPlanResource,
   type ValidationPlanTemplateResource,
@@ -60,10 +61,29 @@ database:
   connection: \${DATABASE_URL}
 checks:
   - type: connect
-  - type: schema
-    expect_tables:
-      - customers
 `;
+
+function starterYamlForEngine(engine: DatabaseEngine | string | undefined): string {
+  if (engine === "mongodb") {
+    return `plan: cloud-validation
+database:
+  engine: mongodb
+  connection: \${MONGODB_URI}
+  name: \${MONGODB_DATABASE}
+checks:
+  - type: connect
+`;
+  }
+
+  const sqlEngine = engine === "mysql" ? "mysql" : "postgres";
+  return `plan: cloud-validation
+database:
+  engine: ${sqlEngine}
+  connection: \${DATABASE_URL}
+checks:
+  - type: connect
+`;
+}
 
 export function ValidationPlansPage() {
   const { user } = useAuth();
@@ -90,6 +110,7 @@ export function ValidationPlansPage() {
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [leftPanel, setLeftPanel] = useState<LeftPanel>("plans");
   const [composerStatus, setComposerStatus] = useState<YamlComposerStatus | null>(null);
+  const [selectedDatabase, setSelectedDatabase] = useState<DatabaseResource | null>(null);
   const [templates, setTemplates] = useState<ValidationPlanTemplateResource[]>([]);
   const [savedPlanVersion, setSavedPlanVersion] = useState<number | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<{
@@ -171,7 +192,7 @@ export function ValidationPlansPage() {
         const values = {
           databaseId,
           name: "default",
-          yamlText: DEFAULT_YAML,
+          yamlText: starterYamlForEngine(db?.engine),
         };
         reset(values);
         setSavedSnapshot(values);
@@ -180,7 +201,7 @@ export function ValidationPlansPage() {
         const values = {
           databaseId,
           name: "default",
-          yamlText: DEFAULT_YAML,
+          yamlText: starterYamlForEngine(db?.engine),
         };
         reset(values);
         setSavedSnapshot(values);
@@ -228,11 +249,23 @@ export function ValidationPlansPage() {
     if (id) {
       initialDbLoaded.current = true;
       setValue("databaseId", id);
-      void loadPlanForDatabase(id);
+      void api
+        .getDatabase(id)
+        .then(({ database }) => {
+          setSelectedDatabase(database);
+          return loadPlanForDatabase(id, database);
+        })
+        .catch((err) => {
+          toast.error(
+            "Could not load database",
+            err instanceof Error ? err.message : "Try again"
+          );
+        });
     }
-  }, [loading, searchParams, setValue, loadPlanForDatabase]);
+  }, [loading, searchParams, setValue, loadPlanForDatabase, toast]);
 
   async function onDatabaseChange(databaseId: string, db: DatabaseResource | null) {
+    setSelectedDatabase(db);
     setValue("databaseId", databaseId, { shouldValidate: true });
     setSearchParams({ databaseId });
     await loadPlanForDatabase(databaseId, db);
@@ -319,12 +352,21 @@ export function ValidationPlansPage() {
   }
 
   async function loadIntoEditor(plan: ValidationPlanResource) {
-    reset({
-      databaseId: plan.databaseId,
-      name: plan.name,
-      yamlText: plan.yamlText,
-    });
-    setSearchParams({ databaseId: plan.databaseId });
+    try {
+      const { database } = await api.getDatabase(plan.databaseId);
+      setSelectedDatabase(database);
+      reset({
+        databaseId: plan.databaseId,
+        name: plan.name,
+        yamlText: plan.yamlText,
+      });
+      setSearchParams({ databaseId: plan.databaseId });
+    } catch (err) {
+      toast.error(
+        "Could not load database",
+        err instanceof Error ? err.message : "Try again"
+      );
+    }
   }
 
   async function confirmDelete() {
@@ -470,6 +512,14 @@ export function ValidationPlansPage() {
             >
               <ProofComposer
                 planName={planName ?? "restore-proof"}
+                engine={
+                  selectedDatabase?.engine === "mongodb"
+                    ? "mongodb"
+                    : selectedDatabase?.engine === "mysql"
+                      ? "mysql"
+                      : "postgres"
+                }
+                disabled={!selectedDatabase || selectedDatabase.id !== selectedDatabaseId}
                 onStatusChange={setComposerStatus}
                 onRequestOpen={() => setLeftPanel("composer")}
                 onApply={(yaml) => {

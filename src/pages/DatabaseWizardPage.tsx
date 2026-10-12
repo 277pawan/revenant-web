@@ -86,13 +86,20 @@ export function DatabaseWizardPage() {
       const { database } = await api.createDatabase({
         name: values.name.trim(),
         engine: values.engine,
-        recoveryMode: values.recoveryMode,
-        host: values.host.trim() || undefined,
-        port: values.port,
-        databaseName: values.databaseName.trim() || undefined,
-        username: values.username.trim() || undefined,
-        password: values.password?.trim() || undefined,
-        sslMode: values.sslMode,
+        recoveryMode: values.engine === "mongodb" ? "direct" : values.recoveryMode,
+        ...(values.engine === "mongodb"
+          ? {
+              connectionString: values.connectionString.trim(),
+              databaseName: values.databaseName.trim(),
+            }
+          : {
+              host: values.host.trim() || undefined,
+              port: values.port,
+              databaseName: values.databaseName.trim() || undefined,
+              username: values.username.trim() || undefined,
+              password: values.password?.trim() || undefined,
+              sslMode: values.sslMode,
+            }),
         region: values.region?.trim() || undefined,
         rdsSourceIdentifier:
           values.recoveryMode === "aws-rds"
@@ -151,7 +158,7 @@ export function DatabaseWizardPage() {
             Add database
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Register a SQL target for restore validation. Secrets are encrypted before storage.
+            Register a SQL recovery target or a MongoDB read-only validation connection.
           </p>
         </div>
       </div>
@@ -176,10 +183,14 @@ export function DatabaseWizardPage() {
             <p className="mt-0.5 text-sm text-slate-500">
               {step === 1 && "How this database appears in your org fleet."}
               {step === 2 &&
-                (recoveryMode === "aws-rds"
-                  ? `AWS RDS snapshot restore drill for ${engine === "mysql" ? "MySQL" : "PostgreSQL"}.`
-                  : `How Revenant reaches ${engine === "mysql" ? "MySQL" : "PostgreSQL"}. Password is optional but recommended.`)}
-              {step === 3 && "Checks will live here in the next phase — you can skip for now."}
+                (engine === "mongodb"
+                  ? "Direct read-only checks connect to your MongoDB using the URI you provide."
+                  : recoveryMode === "aws-rds"
+                    ? `AWS RDS snapshot restore drill for ${engine === "mysql" ? "MySQL" : "PostgreSQL"}.`
+                    : `How Revenant reaches ${engine === "mysql" ? "MySQL" : "PostgreSQL"}. Password is optional but recommended.`)}
+              {step === 3 && (engine === "mongodb"
+                ? "MongoDB validation runs directly and read-only; no backup restore workflow is available."
+                : "Checks will live here in the next phase — you can skip for now.")}
               {step === 4 && "Confirm details before writing to the control plane."}
             </p>
           </div>
@@ -205,34 +216,60 @@ export function DatabaseWizardPage() {
                 <Field
                   label="Validation mode"
                   htmlFor="recoveryMode"
-                  hint="AWS RDS snapshot restore and direct connections support PostgreSQL and MySQL."
+                  hint={engine === "mongodb"
+                    ? "MongoDB uses direct read-only checks. Atlas backup restore is not supported."
+                    : "AWS RDS snapshot restore and direct connections support PostgreSQL and MySQL."}
                   error={errors.recoveryMode?.message}
                 >
-                  <Select id="recoveryMode" invalid={!!errors.recoveryMode} {...register("recoveryMode")}>
-                    {allowDirectPostgres && (
-                      <option value="direct">Direct — connect to live database (Pro+)</option>
+                  <Select
+                    id="recoveryMode"
+                    invalid={!!errors.recoveryMode}
+                    {...register("recoveryMode", {
+                      onChange: (event) => {
+                        if (engine === "mongodb" && event.target.value === "aws-rds") {
+                          setValue("recoveryMode", "direct");
+                        }
+                      },
+                    })}
+                  >
+                    {(allowDirectPostgres || engine === "mongodb") && (
+                      <option value="direct">
+                        {engine === "mongodb"
+                          ? "Direct — read-only MongoDB checks"
+                          : "Direct — connect to live database (Pro+)"}
+                      </option>
                     )}
-                    <option value="aws-rds">AWS RDS — snapshot restore drill (recommended)</option>
+                    <option value="aws-rds" disabled={engine === "mongodb"}>
+                      AWS RDS — snapshot restore drill (SQL only)
+                    </option>
                   </Select>
                 </Field>
-                <Field
-                  label="Region"
-                  htmlFor="region"
-                  hint={recoveryMode === "aws-rds" ? "Required — e.g. eu-west-2" : "Optional metadata"}
-                  error={errors.region?.message}
-                  required={recoveryMode === "aws-rds"}
-                >
-                  <Input
-                    id="region"
-                    invalid={!!errors.region}
-                    placeholder="eu-west-2"
-                    {...register("region")}
-                  />
-                </Field>
+                {engine === "mongodb" && (
+                  <div className="sm:col-span-2 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                    MongoDB is checked directly in read-only mode. Revenant does not restore Atlas
+                    backups or create snapshots for MongoDB.
+                  </div>
+                )}
+                {engine !== "mongodb" && (
+                  <Field
+                    label="Region"
+                    htmlFor="region"
+                    hint={recoveryMode === "aws-rds" ? "Required — e.g. eu-west-2" : "Optional metadata"}
+                    error={errors.region?.message}
+                    required={recoveryMode === "aws-rds"}
+                  >
+                    <Input
+                      id="region"
+                      invalid={!!errors.region}
+                      placeholder="eu-west-2"
+                      {...register("region")}
+                    />
+                  </Field>
+                )}
                 <Field
                   label="Database engine"
                   htmlFor="engine"
-                  hint="Choose the SQL engine used by this recovery target."
+                  hint="Choose PostgreSQL/MySQL for SQL recovery, or MongoDB for direct read-only checks."
                   error={errors.engine?.message}
                 >
                   <Select
@@ -241,12 +278,19 @@ export function DatabaseWizardPage() {
                     {...register("engine", {
                       onChange: (event) => {
                         const nextEngine = event.target.value as DatabaseWizardValues["engine"];
-                        setValue("port", nextEngine === "mysql" ? 3306 : 5432);
+                        if (nextEngine === "mongodb") {
+                          setValue("recoveryMode", "direct");
+                          setValue("connectionString", "");
+                        } else {
+                          setValue("port", nextEngine === "mysql" ? 3306 : 5432);
+                          setValue("connectionString", "");
+                        }
                       },
                     })}
                   >
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL</option>
+                    <option value="mongodb">MongoDB</option>
                   </Select>
                 </Field>
                 <div className="sm:col-span-2">
@@ -267,7 +311,54 @@ export function DatabaseWizardPage() {
               </div>
             )}
 
-            {step === 2 && recoveryMode === "aws-rds" && (
+            {step === 2 && engine === "mongodb" && (
+              <div className="space-y-4">
+                <Field
+                  label="MongoDB database name"
+                  htmlFor="databaseName"
+                  required
+                  hint="The actual database inside Atlas, not the display name shown in Revenant. Find it under Database → Collections."
+                  error={errors.databaseName?.message}
+                >
+                  <Input
+                    id="databaseName"
+                    invalid={!!errors.databaseName}
+                    placeholder="myapp"
+                    {...register("databaseName")}
+                  />
+                </Field>
+                <Field
+                  label="MongoDB connection URI"
+                  htmlFor="connectionString"
+                  required
+                  hint="Use mongodb:// or mongodb+srv://. The URI is treated as a secret, encrypted by the backend, and never returned in database details."
+                  error={errors.connectionString?.message}
+                >
+                  <SecretInput
+                    id="connectionString"
+                    invalid={!!errors.connectionString}
+                    autoComplete="new-password"
+                    placeholder="mongodb+srv://cluster.example.mongodb.net/database"
+                    className="font-mono text-xs"
+                    {...register("connectionString")}
+                  />
+                </Field>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                  <p className="font-medium">Use a dedicated least-privilege MongoDB user</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-emerald-900">
+                    <li>Grant read-only access only to the database and collections to validate.</li>
+                    <li>Do not grant write, admin, backup, or restore privileges.</li>
+                    <li>Allowlist Cloud’s outbound IP in Atlas to show connectivity status. Self-hosted runners also need their own network access allowed for validation jobs.</li>
+                  </ul>
+                  <p className="mt-2 text-xs">
+                    Checks run directly against the live database after you create this connection;
+                    no Atlas backup restore is performed.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === 2 && engine !== "mongodb" && recoveryMode === "aws-rds" && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                   Jobs will find the latest RDS snapshot, restore to a temporary sandbox, run your
@@ -438,7 +529,7 @@ export function DatabaseWizardPage() {
               </div>
             )}
 
-            {step === 2 && recoveryMode === "direct" && (
+            {step === 2 && engine !== "mongodb" && recoveryMode === "direct" && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Field label="Host" htmlFor="host" required error={errors.host?.message}>
@@ -544,13 +635,20 @@ export function DatabaseWizardPage() {
                     ["Display name", values.name],
                     [
                       "Mode",
-                      values.recoveryMode === "aws-rds"
+                      engine === "mongodb"
+                        ? "Direct MongoDB read-only checks"
+                        : values.recoveryMode === "aws-rds"
                         ? "AWS RDS snapshot restore"
                         : `Direct ${engine === "mysql" ? "MySQL" : "PostgreSQL"}`,
                     ],
-                    ["Database engine", engine === "mysql" ? "MySQL" : "PostgreSQL"],
+                    ["Database engine", engine === "mongodb" ? "MongoDB" : engine === "mysql" ? "MySQL" : "PostgreSQL"],
                     ["Region", values.region || "—"],
-                    ...(values.recoveryMode === "aws-rds"
+                    ...(engine === "mongodb"
+                      ? [
+                          ["MongoDB database", values.databaseName],
+                          ["Connection URI", values.connectionString.trim() ? "Will be encrypted on save" : "—"],
+                        ]
+                      : values.recoveryMode === "aws-rds"
                       ? [
                           ["RDS instance", values.rdsSourceIdentifier],
                           [
@@ -573,14 +671,18 @@ export function DatabaseWizardPage() {
                           ["Port", String(values.port)],
                           ["SSL", values.sslMode],
                         ]),
-                    ["Database", values.databaseName],
-                    ["Username", values.username],
-                    [
-                      "Password",
-                      values.password?.trim()
-                        ? "Will be encrypted on save"
-                        : "Not provided (can add later)",
-                    ],
+                    ...(engine === "mongodb"
+                      ? []
+                      : [
+                          ["Database", values.databaseName],
+                          ["Username", values.username],
+                          [
+                            "Password",
+                            values.password?.trim()
+                              ? "Will be encrypted on save"
+                              : "Not provided (can add later)",
+                          ],
+                        ]),
                   ].map(([k, v]) => (
                     <div
                       key={k}
@@ -647,7 +749,14 @@ export function DatabaseWizardPage() {
         <aside className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900">What gets stored</h3>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+            {engine === "mongodb" ? (
+              <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                <li>Database metadata is returned without the MongoDB URI.</li>
+                <li>The connection URI is a secret stored encrypted by the backend.</li>
+                <li>MongoDB checks are direct and read-only; Atlas restore is not supported.</li>
+              </ul>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm text-slate-600">
               <li>
                 <span className="font-medium text-slate-800">databases</span> — host, user, region
                 (metadata)
@@ -657,7 +766,8 @@ export function DatabaseWizardPage() {
                 iv + auth tag only
               </li>
               <li>GET APIs never return the password — only <code className="text-xs">hasCredentials</code></li>
-            </ul>
+              </ul>
+            )}
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900">Roadmap on this wizard</h3>

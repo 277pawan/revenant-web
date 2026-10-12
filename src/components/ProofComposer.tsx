@@ -14,11 +14,12 @@ import {
   type SchemaGuideTab,
 } from "./SchemaPasteGuide";
 import type {
+  DatabaseEngine,
   GenerateValidationYamlResponse,
   YamlComposerStatus,
 } from "../types/api";
 
-const LAYERS: Array<{ id: string; label: string }> = [
+const SQL_LAYERS: Array<{ id: string; label: string }> = [
   { id: "schema", label: "Tables" },
   { id: "foreign_key", label: "FKs" },
   { id: "row_count", label: "Not empty" },
@@ -26,9 +27,17 @@ const LAYERS: Array<{ id: string; label: string }> = [
   { id: "index", label: "Indexes" },
   { id: "golden_query", label: "Rules" },
 ];
+const MONGODB_LAYERS: Array<{ id: string; label: string }> = [
+  { id: "collections", label: "Collections" },
+  { id: "document_count", label: "Documents" },
+  { id: "document_schema", label: "Fields & types" },
+  { id: "mongo_freshness", label: "Freshness" },
+  { id: "index", label: "Indexes" },
+];
 
 type ProofComposerProps = {
   planName: string;
+  engine: DatabaseEngine;
   disabled?: boolean;
   onApply: (yamlText: string) => void;
   onStatusChange?: (status: YamlComposerStatus) => void;
@@ -60,21 +69,41 @@ function composerErrorMessage(err: unknown): string {
 
 export function ProofComposer({
   planName,
+  engine,
   disabled,
   onApply,
   onStatusChange,
   onRequestOpen,
 }: ProofComposerProps) {
-  const [guideTab, setGuideTab] = useState<SchemaGuideTab>("prisma");
+  const isMongoDB = engine === "mongodb";
+  const [guideTab, setGuideTab] = useState<SchemaGuideTab>(
+    isMongoDB ? "mongodb" : "prisma"
+  );
   const [status, setStatus] = useState<YamlComposerStatus | null>(null);
   const [schemaText, setSchemaText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [intent, setIntent] = useState("");
-  const [layers, setLayers] = useState<string[]>([
-    "schema",
-    "foreign_key",
-    "row_count",
-  ]);
+  const [layers, setLayers] = useState<string[]>(
+    isMongoDB
+      ? ["collections", "document_count", "document_schema"]
+      : ["schema", "foreign_key", "row_count"]
+  );
+  const layersForEngine = isMongoDB ? MONGODB_LAYERS : SQL_LAYERS;
+
+  function changeGuideTab(tab: SchemaGuideTab) {
+    setGuideTab(tab);
+    setResult(null);
+  }
+
+  useEffect(() => {
+    setGuideTab(isMongoDB ? "mongodb" : "prisma");
+    setLayers(
+      isMongoDB
+        ? ["collections", "document_count", "document_schema"]
+        : ["schema", "foreign_key", "row_count"]
+    );
+    setResult(null);
+  }, [isMongoDB]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateValidationYamlResponse | null>(null);
@@ -148,6 +177,7 @@ export function ProofComposer({
     setResult(null);
     try {
       const res = await api.composeValidationYaml({
+        engine: isMongoDB ? "mongodb" : engine,
         schemaText,
         intent: intent.trim() || undefined,
         planName: planName.trim() || undefined,
@@ -228,7 +258,11 @@ export function ProofComposer({
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Schema Source
             </span>
-            <SchemaSourceTabs active={guideTab} onChange={setGuideTab} />
+            <SchemaSourceTabs
+              active={guideTab}
+              onChange={changeGuideTab}
+              engine={isMongoDB ? "mongodb" : "sql"}
+            />
           </div>
 
           <div
@@ -282,7 +316,11 @@ export function ProofComposer({
               }}
               disabled={!enabled || busy}
               rows={3}
-              placeholder={`datasource db { provider = "postgresql" … }\nmodel User { id Int @id … }`}
+              placeholder={
+                isMongoDB
+                  ? `{"bsonType":"object","required":["name"],"properties":{"name":{"bsonType":"string"}}}\n\nor example documents after removing personal data`
+                  : `datasource db { provider = "postgresql" … }\nmodel User { id Int @id … }`
+              }
               className="w-full resize-y border-0 bg-transparent font-mono text-[11px] leading-relaxed text-slate-600 placeholder:text-slate-400 focus:outline-none"
             />
           </div>
@@ -303,7 +341,7 @@ export function ProofComposer({
             Proof Layers
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {LAYERS.map((layer) => {
+            {layersForEngine.map((layer) => {
               const on = layers.includes(layer.id);
               return (
                 <button
@@ -358,7 +396,11 @@ export function ProofComposer({
       </div>
 
       <div ref={guideRef} className="mt-3">
-        <SchemaPasteGuide activeTab={guideTab} onTabChange={setGuideTab} />
+        <SchemaPasteGuide
+          activeTab={guideTab}
+          onTabChange={changeGuideTab}
+          engine={isMongoDB ? "mongodb" : "sql"}
+        />
       </div>
 
       {error && (

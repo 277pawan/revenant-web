@@ -20,6 +20,7 @@ type WorkflowCommandCenterProps = {
   canDownload: boolean;
   running: boolean;
   awsMode: boolean;
+  engine?: string;
   onRunDrill: () => void;
 };
 
@@ -33,8 +34,10 @@ export function WorkflowCommandCenter({
   canDownload,
   running,
   awsMode,
+  engine,
   onRunDrill,
 }: WorkflowCommandCenterProps) {
+  const mongoMode = engine === "mongodb";
   const httpConfigured =
     readiness?.readiness.dimensions.some(
       (d) => d.id === "application_health" && d.status !== "not_configured"
@@ -54,8 +57,10 @@ export function WorkflowCommandCenter({
             </div>
             <p className="mt-1 text-sm text-slate-600">
               {lastJob
-                ? `Last drill ${formatRelativeTime(lastJob.createdAt)}`
-                : "No drills yet — run your first restore proof below"}
+                ? `${mongoMode ? "Last check" : "Last drill"} ${formatRelativeTime(lastJob.createdAt)}`
+                : mongoMode
+                  ? "No checks yet — run your first read-only validation below"
+                  : "No drills yet — run your first restore proof below"}
               {readiness != null && (
                 <>
                   {" "}
@@ -80,12 +85,18 @@ export function WorkflowCommandCenter({
                       ? sourceStatusMessage ?? "A full drill requires an available AWS source RDS instance."
                       : awsMode
                       ? "Check live RDS → create a new manual snapshot (retained in AWS) → restore a temporary RDS database → validate → request cleanup. AWS may take an hour or more."
-                      : "Run validation checks against the live database"
+                      : mongoMode
+                        ? "Run read-only checks directly against MongoDB; no Atlas backup restore is performed"
+                        : "Run validation checks against the live database"
                   }
                   className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   <Play size={16} />
-                  {running ? "Queuing…" : "Run restore drill"}
+                  {running
+                    ? "Queuing…"
+                    : mongoMode
+                      ? "Run read-only checks"
+                      : "Run restore drill"}
                 </button>
               </div>
               {awsMode && !canRunFull && (
