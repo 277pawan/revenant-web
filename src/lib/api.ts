@@ -47,6 +47,16 @@ import { site } from "./site";
 const API_URL = site.apiUrl;
 const TOKEN_KEY = "revenant_token";
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem(TOKEN_KEY);
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -84,7 +94,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error ?? `Request failed (${res.status})`);
+    throw new ApiError(data.error ?? `Request failed (${res.status})`, res.status);
   }
   return data as T;
 }
@@ -147,6 +157,10 @@ export const api = {
 
   me(): Promise<{ user: AuthUser }> {
     return request("/api/v1/me");
+  },
+
+  sessionToken(): Promise<{ token: string }> {
+    return request("/api/v1/auth/session-token", { method: "POST" });
   },
 
   getDashboardOverview(): Promise<{ overview: DashboardOverview }> {

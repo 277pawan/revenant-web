@@ -1,11 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AcceptInviteRequest,
   AuthUser,
   LoginRequest,
   RegisterRequest,
 } from "../types/api";
-import { api } from "./api";
+import { ApiError, api } from "./api";
 
 const TOKEN_KEY = "revenant_token"; // fallback if cookie blocked; API also sets httpOnly cookie
 
@@ -25,15 +25,32 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const sessionCheckId = useRef(0);
 
   const refreshSession = useCallback(async (): Promise<AuthUser | null> => {
+    const checkId = ++sessionCheckId.current;
+    const tokenAtStart = localStorage.getItem(TOKEN_KEY);
     try {
       const { user } = await api.me();
+      if (
+        localStorage.getItem(TOKEN_KEY) !== tokenAtStart
+      ) {
+        return null;
+      }
+      if (checkId !== sessionCheckId.current) return user;
       setUser(user);
       return user;
-    } catch {
-      localStorage.removeItem(TOKEN_KEY);
-      setUser(null);
+    } catch (error) {
+      if (
+        checkId !== sessionCheckId.current ||
+        localStorage.getItem(TOKEN_KEY) !== tokenAtStart
+      ) {
+        return null;
+      }
+      if (error instanceof ApiError && error.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        setUser(null);
+      }
       return null;
     }
   }, []);
@@ -52,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (body: LoginRequest) => {
     const res = await api.login(body);
+    sessionCheckId.current += 1;
     localStorage.setItem(TOKEN_KEY, res.token);
     setUser(res.user);
     return res.user;
@@ -59,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(async (body: RegisterRequest) => {
     const res = await api.register(body);
+    sessionCheckId.current += 1;
     localStorage.setItem(TOKEN_KEY, res.token);
     setUser(res.user);
     return res.user;
@@ -66,12 +85,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const acceptInvite = useCallback(async (body: AcceptInviteRequest) => {
     const res = await api.acceptInvite(body);
+    sessionCheckId.current += 1;
     localStorage.setItem(TOKEN_KEY, res.token);
     setUser(res.user);
     return res.user;
   }, []);
 
   const logout = useCallback(async () => {
+    sessionCheckId.current += 1;
     localStorage.removeItem(TOKEN_KEY);
     setUser(null);
     await api.logout();
