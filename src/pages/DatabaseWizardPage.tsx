@@ -64,6 +64,7 @@ export function DatabaseWizardPage() {
     return <Navigate to="/databases" replace />;
   }
 
+
   async function goNext() {
     setSubmitError(null);
     const fields = stepFields[step];

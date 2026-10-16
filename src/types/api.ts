@@ -853,3 +853,116 @@ export interface OrgSubscriptionSummary {
     directPostgres: boolean;
   };
 }
+
+// ─── Redis provider ─────────────────────────────────────────────────────────
+// Mirrors revenant-cloud/packages/shared/src/redis.ts
+//
+// Positioning: Revenant proves a Redis backup restores. Snapshot storage is
+// opt-in and every stored artifact carries a mandatory TTL.
+
+export type RedisSnapshotStatus =
+  | "capturing"
+  | "stored"
+  | "expired"
+  | "deleted"
+  | "failed";
+
+export type RedisVerificationStatus = "verified" | "failed" | "never" | "pending";
+
+export interface RedisKeyspaceEntry {
+  keys: number;
+  expires: number;
+  avgTtl: number | null;
+}
+
+export interface RedisFingerprint {
+  source: "live" | "restored_rdb";
+  version: string | null;
+  mode: string | null;
+  keyspace: Record<string, RedisKeyspaceEntry>;
+  totalKeys: number;
+  totalExpires: number;
+  usedMemoryBytes: number | null;
+  maxmemoryBytes: number | null;
+  maxmemoryPolicy: string | null;
+  /** "SET" | "NOT SET" — never the actual password */
+  requirepass: "SET" | "NOT SET";
+  appendOnly: "yes" | "no" | null;
+  savePolicy: string | null;
+  sampleDigest: string | null;
+  sampledKeys: number;
+  capturedAt: string;
+}
+
+export interface RedisResource {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  dbIndex: number;
+  username: string | null;
+  tls: boolean;
+  engineVersion: string | null;
+  snapshotEnabled: boolean;
+  snapshotRetentionHours: number | null;
+  databaseId: string | null;
+  hasCredentials: boolean;
+  lastVerifiedAt: string | null;
+  lastVerificationStatus: RedisVerificationStatus;
+  lastRestoreProofSeconds: number | null;
+  fingerprint: RedisFingerprint | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RedisSnapshotResource {
+  id: string;
+  redisResourceId: string;
+  status: RedisSnapshotStatus;
+  byteSize: number | null;
+  checksumSha256: string | null;
+  storageKey: string | null;
+  metadata: RedisFingerprint | null;
+  createdAt: string;
+  expiresAt: string | null;
+  deletedAt: string | null;
+  lastVerifiedAt: string | null;
+  lastVerificationStatus: RedisVerificationStatus;
+}
+
+export interface RedisProofResource {
+  id: string;
+  redisResourceId: string;
+  snapshotId: string | null;
+  status: string;
+  restored: string | null;
+  sourceKeyCount: number | null;
+  restoredKeyCount: number | null;
+  rdbBytes: number | null;
+  restoreSeconds: number | null;
+  rpoObservedSeconds: number | null;
+  rdbLastBgsaveStatus: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+/** Result of POST /redis/test — never persisted. */
+export interface RedisTestResult {
+  ok: boolean;
+  redactedUrl: string;
+  latencyMs: number | null;
+  fingerprint: RedisFingerprint | null;
+  error: string | null;
+  /** True when the failure is reachability, not a rejected password. */
+  unreachable: boolean;
+}
+
+/** Result of POST /redis/:id/proofs — storage fields are null when opted out. */
+export interface RedisProofStarted {
+  proofId: string;
+  snapshotId: string | null;
+  storageKey: string | null;
+  expiresAt: string | null;
+}

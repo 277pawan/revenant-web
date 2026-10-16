@@ -637,4 +637,80 @@ export const api = {
     });
   },
 
+  // ─── Redis provider ──────────────────────────────────────────────────────
+
+  /** Test a Redis URL without saving it. Never returns the password. */
+  testRedisUrl(url: string): Promise<{ test: import("../types/api").RedisTestResult }> {
+    return request("/api/v1/redis/test", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  },
+
+  listRedisResources(): Promise<{ resources: import("../types/api").RedisResource[] }> {
+    return request("/api/v1/redis");
+  },
+
+  getRedisResource(id: string): Promise<{ resource: import("../types/api").RedisResource }> {
+    return request(`/api/v1/redis/${id}`);
+  },
+
+  createRedisResource(body: {
+    name: string;
+    url: string;
+    databaseId?: string | null;
+    snapshotEnabled?: boolean;
+    snapshotRetentionHours?: number | null;
+  }): Promise<{ resource: import("../types/api").RedisResource }> {
+    return request("/api/v1/redis", { method: "POST", body: JSON.stringify(body) });
+  },
+
+  updateRedisResource(
+    id: string,
+    body: {
+      name?: string;
+      url?: string;
+      databaseId?: string | null;
+      snapshotEnabled?: boolean;
+      snapshotRetentionHours?: number | null;
+    }
+  ): Promise<{ resource: import("../types/api").RedisResource }> {
+    return request(`/api/v1/redis/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteRedisResource(id: string): Promise<void> {
+    return request(`/api/v1/redis/${id}`, { method: "DELETE" });
+  },
+
+  /** Open a restore proof. Storage fields come back null when opted out. */
+  startRedisProof(
+    id: string,
+    body: { retentionHours?: number } = {}
+  ): Promise<{ proof: import("../types/api").RedisProofStarted }> {
+    return request(`/api/v1/redis/${id}/proofs`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  /**
+   * Proofs + snapshots + monthly quota in ONE request.
+   * proofsUsedThisMonth is computed server-side; the proofs list is capped at
+   * 50, so summing it client-side would undercount past that.
+   */
+  listRedisProofs(id: string): Promise<{
+    proofs: import("../types/api").RedisProofResource[];
+    snapshots: import("../types/api").RedisSnapshotResource[];
+    proofsUsedThisMonth: number;
+  }> {
+    return request(`/api/v1/redis/${id}/proofs`);
+  },
+
+  deleteRedisSnapshot(snapshotId: string): Promise<void> {
+    return request(`/api/v1/redis/snapshots/${snapshotId}`, { method: "DELETE" });
+  },
+
 };

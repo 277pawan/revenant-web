@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, Play, Search } from "lucide-react";
 import { api } from "../lib/api";
 import type { DatabaseResource } from "../types/api";
@@ -14,13 +14,27 @@ type Props = {
 };
 
 /**
+ * Stable identity for the default `excludeIds`.
+ *
+ * This is load-bearing, not a micro-optimisation. A default parameter of `[]`
+ * allocates a NEW array on every render, which invalidates the
+ * `excludeSet` useMemo, which invalidates the load effect, which calls
+ * setWorkflows, which re-renders —
+ * an infinite fetch loop against /api/v1/databases.
+ *
+ * Callers that pass their own memoized array were never affected, so this only
+ * showed up where `excludeIds` was omitted.
+ */
+const EMPTY_EXCLUDE: string[] = [];
+
+/**
  * Searchable workflow picker (shadcn Combobox-style, no extra deps).
  * Only lists databases that have a validation plan.
  */
 export function WorkflowPicker({
   value,
   onChange,
-  excludeIds = [],
+  excludeIds = EMPTY_EXCLUDE,
   disabled,
   invalid,
   error,
@@ -40,37 +54,64 @@ export function WorkflowPicker({
     return () => clearTimeout(t);
   }, [search]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.listDatabases(1, 50, debouncedSearch || undefined);
-      setWorkflows(
-        res.data.filter((d) => d.hasValidationPlan && !excludeSet.has(d.id))
-      );
-      if (value) {
-        const match = res.data.find((d) => d.id === value);
-        if (match) setSelectedLabel(match.name);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch, value, excludeSet]);
-
+  // `value` is deliberately NOT a dependency here: the list does not depend on
+  // the current selection, and the label is resolved by the effect below.
+  // Including it made the picker refetch whenever the parent re-rendered.
+  //
+  // The cancellation flag matters as much as the deps — without it a slow
+  // response can setState after unmount, and a retried fetch can resolve twice
+  // and re-trigger this effect.
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const res = await api.listDatabases(1, 50, debouncedSearch || undefined);
+        if (!cancelled) {
+          setWorkflows(
+            res.data.filter((d) => d.hasValidationPlan && !excludeSet.has(d.id))
+          );
+        }
+      } catch {
+        if (!cancelled) setWorkflows([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, excludeSet]);
 
+  // Resolve the display label for a value that is not in the loaded page.
+  // Guarded so a failed lookup cannot re-fire on every render, and cancelled on
+  // unmount / value change so a late response cannot resurrect a stale label.
   useEffect(() => {
     if (!value) {
       setSelectedLabel(null);
       return;
     }
     const match = workflows.find((d) => d.id === value);
-    if (match) setSelectedLabel(match.name);
-    else if (!selectedLabel) {
-      void api.getDatabase(value).then((res) => setSelectedLabel(res.database.name));
+    if (match) {
+      setSelectedLabel(match.name);
+      return;
     }
-  }, [value, workflows, selectedLabel]);
+    let cancelled = false;
+    void api
+      .getDatabase(value)
+      .then((res) => {
+        if (!cancelled) setSelectedLabel(res.database.name);
+      })
+      .catch(() => {
+        // Leave the placeholder rather than showing a wrong name. Do NOT
+        // retry — `selectedLabel` staying null used to be the condition that
+        // re-triggered this effect on every render.
+        if (!cancelled) setSelectedLabel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [value, workflows]);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {

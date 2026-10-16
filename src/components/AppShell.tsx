@@ -20,6 +20,7 @@ import {
   KeyRound,
   CreditCard,
   ChevronRight,
+  HardDrive,
 } from "lucide-react";
 import { RevenantMark } from "./auth/RevenantMark";
 import { ProductGuideWizard } from "./guide/ProductGuideWizard";
@@ -71,7 +72,10 @@ const navGroups: NavGroup[] = [
   {
     id: "infrastructure",
     label: "Infrastructure",
-    items: [{ to: "/databases", label: "Databases", icon: Database }],
+    items: [
+      { to: "/databases", label: "Databases", icon: Database },
+      { to: "/redis", label: "Redis", icon: HardDrive },
+    ],
   },
 ];
 
