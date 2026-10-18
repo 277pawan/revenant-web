@@ -26,7 +26,7 @@ export const PLAN_DEFINITIONS: Record<OrganizationPlan, PlanDefinition> = {
     name: "Starter",
     priceLabel: "₹499 / month",
     tagline: "One production workflow — Revenant runs restore drills for you.",
-    trialDays: 30,
+    trialDays: 90,
     selfHostedAgent: false,
     managedCloudDrills: true,
     parallelRestoreDrills: 1,
@@ -35,7 +35,7 @@ export const PLAN_DEFINITIONS: Record<OrganizationPlan, PlanDefinition> = {
     redisSnapshotRetentionHours: 24,
     redisSnapshotEnabled: true,
     highlights: [
-      "30-day free trial, then ₹499 / month",
+      "90-day (3-month) free trial, then ₹499 / month",
       "1 production RDS workflow — managed AWS restore drill",
       "No Docker — Revenant cloud executes drills",
       "1 Redis instance — 4 restore proofs/mo, opt-in snapshots up to 24h",

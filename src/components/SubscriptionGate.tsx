@@ -33,7 +33,7 @@ export function SubscriptionGate({ user, onSignOut }: Props) {
         </p>
         <ul className="mt-4 space-y-2 text-sm text-slate-600">
           <li>· ₹1 today — verifies your card (not the full {plan.priceLabel})</li>
-          <li>· {plan.priceLabel} after your 30-day trial</li>
+          <li>· {plan.priceLabel} after your 3-month trial</li>
           <li>· Same login on website and cloud dashboard</li>
         </ul>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:flex-wrap">

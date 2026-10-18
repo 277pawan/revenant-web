@@ -236,7 +236,7 @@ export function LoginPage() {
             >
               {site.marketingUrl.replace(/^https?:\/\//, "")}
             </a>{" "}
-            for 30 days free — no card at signup.
+            for 3 months free — no card at signup.
           </div>
 
           <div className="mb-6">

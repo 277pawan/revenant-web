@@ -15,7 +15,7 @@ React dashboard for **Revenant Cloud** — the control plane where teams registe
 | #   | Item                                                                                        |
 | --- | ------------------------------------------------------------------------------------------- |
 | 1   | **Production** — Cloud Run API CI/CD, Firebase frontends, live Razorpay, prod DB migrations |
-| 2   | **Starter billing** — ₹1 autopay + ₹499/mo subscription, 30-day trial                       |
+| 2   | **Starter billing** — ₹1 autopay + ₹499/mo subscription, 3-month trial                       |
 | 3   | **Pro** — ₹1,499/mo plan, upgrade path + Pro signup from pricing                            |
 | —   | Fund us (`/coffee`) one-time Razorpay, OAuth, password reset, plan API limits               |
 
