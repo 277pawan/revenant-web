@@ -540,11 +540,13 @@ export function RunDetailPage() {
                       Selected node diagnostics:{" "}
                       <span
                         className={
-                          selectedCheck.status === "fail"
-                            ? "text-red-600"
-                            : "text-slate-800"
-                        }
-                      >
+                              selectedCheck.status === "pass"
+                                ? "text-emerald-700"
+                                : selectedCheck.status === "fail"
+                                  ? "text-red-600"
+                                  : "text-slate-800"
+                            }
+                          >
                         {selectedCheck.checkName}
                       </span>
                     </>
@@ -556,7 +558,15 @@ export function RunDetailPage() {
               <div className="bg-slate-900 p-4 font-mono text-xs leading-relaxed text-slate-200">
                 {selectedCheck ? (
                   <>
-                    <p className="text-red-400">
+                    <p
+                      className={
+                        selectedCheck.status === "pass"
+                          ? "text-emerald-400"
+                          : selectedCheck.status === "fail"
+                            ? "text-red-400"
+                            : "text-slate-300"
+                      }
+                    >
                       [{selectedCheck.status.toUpperCase()}] {selectedCheck.checkName}
                     </p>
                     <p className="mt-2 text-slate-300">

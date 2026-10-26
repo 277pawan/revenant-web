@@ -7,7 +7,7 @@ import {
   LayoutDashboard,
   PlayCircle,
   Shield,
-  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 
 export type ProductGuideStep = {
@@ -29,7 +29,7 @@ export const PRODUCT_GUIDE_STEPS: ProductGuideStep[] = [
     summary: "Prove backups actually restore — before an outage.",
     detail:
       "Revenant runs managed restore drills on your databases, measures how long recovery takes, and stores signed evidence you can share with leadership or auditors. This guide walks through how the product fits together.",
-    icon: Sparkles,
+    icon: ShieldCheck,
     target: "dashboard-hero",
   },
   {

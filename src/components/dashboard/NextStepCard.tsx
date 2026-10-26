@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, CircleDot } from "lucide-react";
 import { marketingLink } from "../../lib/site";
 import type { DashboardOnboardingStep } from "../../types/api";
 
@@ -20,7 +20,7 @@ export function NextStepCard({ steps }: NextStepCardProps) {
       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-            <Sparkles size={16} />
+            <CircleDot size={16} />
             Your next step ({done} of {total} complete)
           </div>
           <p className="mt-2 text-base font-medium text-slate-900">{next.label}</p>

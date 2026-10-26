@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   CircleHelp,
+  FileCode2,
   Loader2,
-  Sparkles,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -382,7 +382,7 @@ export function ProofComposer({
             {busy ? (
               <Loader2 size={14} className="animate-spin" />
             ) : (
-              <Sparkles size={14} />
+              <FileCode2 size={14} />
             )}
             Compose YAML
           </button>

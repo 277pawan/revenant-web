@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, ExternalLink, Sparkles } from "lucide-react";
+import { AlertTriangle, CreditCard, ExternalLink } from "lucide-react";
 import type { AuthUser } from "../types/api";
 import { getPlanDefinition, trialDaysRemaining } from "../lib/plans";
 import { redirectToWebsiteBilling } from "../lib/subscription-access";
@@ -49,7 +49,7 @@ export function SubscriptionBanner({ user }: { user: AuthUser }) {
         role="status"
       >
         <div className="flex items-start gap-2">
-          <Sparkles size={18} className="mt-0.5 shrink-0 text-blue-600" />
+          <CreditCard size={18} className="mt-0.5 shrink-0 text-blue-600" />
           <div>
             <p className="font-medium">Autopay active — run your first restore drill</p>
             <p className="mt-0.5 text-blue-800">

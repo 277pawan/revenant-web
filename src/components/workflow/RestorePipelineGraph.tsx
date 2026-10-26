@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -8,6 +8,7 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
@@ -20,6 +21,7 @@ export type GraphNodeData = {
   status: "pass" | "fail" | "running" | "pending" | "skip";
   detail?: string;
   checkResult?: JobResultResource;
+  revealOrder?: number;
 };
 
 function nodeBorder(status: GraphNodeData["status"]) {
@@ -47,9 +49,10 @@ function PipelineNode({ data, selected }: NodeProps<Node<GraphNodeData>>) {
 
   return (
     <div
-      className={`min-w-[130px] max-w-[160px] rounded-lg border-2 px-3 py-2 shadow-sm transition-shadow ${nodeBorder(data.status)} ${
+      className={`pipeline-node-enter min-w-[130px] max-w-[180px] rounded-lg border-2 px-3 py-2 shadow-sm transition-shadow ${nodeBorder(data.status)} ${
         selected ? "shadow-md ring-2 ring-brand/30" : ""
       }`}
+      style={{ animationDelay: `${Math.min(data.revealOrder ?? 0, 20) * 70}ms` }}
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !bg-slate-400" />
       <div className="flex items-start gap-1.5">
@@ -101,7 +104,64 @@ function stageStatus(
   return "pending";
 }
 
-function buildGraph(job: JobDetailResource): {
+type PipelineCheck = {
+  key: string;
+  label: string;
+  sublabel: string;
+  status: GraphNodeData["status"];
+  detail?: string;
+  result?: JobResultResource;
+};
+
+function checkStatus(status: string): GraphNodeData["status"] {
+  if (status === "pass") return "pass";
+  if (status === "fail" || status === "error") return "fail";
+  if (status === "skip") return "skip";
+  return "pending";
+}
+
+function getPipelineChecks(job: JobDetailResource): PipelineCheck[] {
+  const checks = new Map<string, PipelineCheck>();
+  const occurrences = new Map<string, number>();
+
+  for (const check of job.runnerProgress?.checks ?? []) {
+    const baseKey = `${check.checkType}:${check.checkName}`;
+    const occurrence = occurrences.get(baseKey) ?? 0;
+    occurrences.set(baseKey, occurrence + 1);
+    checks.set(`${baseKey}:${occurrence}`, {
+      key: `${baseKey}:${occurrence}`,
+      label: check.checkName,
+      sublabel: check.checkType,
+      status: checkStatus(check.status),
+      detail: check.status === "fail" ? check.message ?? undefined : undefined,
+    });
+  }
+
+  occurrences.clear();
+  for (const check of job.results) {
+    const baseKey = `${check.checkType}:${check.checkName}`;
+    const occurrence = occurrences.get(baseKey) ?? 0;
+    occurrences.set(baseKey, occurrence + 1);
+    const key = `${baseKey}:${occurrence}`;
+    checks.set(key, {
+      key,
+      label: check.checkName,
+      sublabel: check.checkType,
+      status: checkStatus(check.status),
+      detail:
+        check.status === "fail" && check.message
+          ? check.message.slice(0, 80)
+          : check.durationMs != null
+            ? `${check.durationMs}ms`
+            : undefined,
+      result: check,
+    });
+  }
+
+  return [...checks.values()];
+}
+
+function buildGraph(job: JobDetailResource, checks: PipelineCheck[]): {
   nodes: Node<GraphNodeData>[];
   edges: Edge[];
 } {
@@ -138,6 +198,7 @@ function buildGraph(job: JobDetailResource): {
         label: step.label,
         sublabel: step.sublabel,
         status: step.stage,
+        revealOrder: i,
       },
     });
     if (i > 0) {
@@ -155,34 +216,24 @@ function buildGraph(job: JobDetailResource): {
     }
   });
 
-  const checks = job.results;
   const verifyYStart = 20;
   const verifyX = 620;
 
   if (checks.length > 0) {
     checks.forEach((check, i) => {
-      const id = `check-${check.id}`;
-      const st: GraphNodeData["status"] =
-        check.status === "pass"
-          ? "pass"
-          : check.status === "fail"
-            ? "fail"
-            : "pending";
+      const id = `check-${encodeURIComponent(check.key)}`;
+      const st = check.status;
       nodes.push({
         id,
         type: "pipeline",
         position: { x: verifyX, y: verifyYStart + i * 88 },
         data: {
-          label: check.checkName,
-          sublabel: check.checkType,
+          label: check.label,
+          sublabel: check.sublabel,
           status: st,
-          detail:
-            check.status === "fail" && check.message
-              ? check.message.slice(0, 80)
-              : check.durationMs != null
-                ? `${check.durationMs}ms`
-                : undefined,
-          checkResult: check,
+          detail: check.detail,
+          checkResult: check.result,
+          revealOrder: linear.length + i,
         },
       });
       edges.push({
@@ -213,6 +264,7 @@ function buildGraph(job: JobDetailResource): {
         label: "Verify",
         sublabel: "Validation checks",
         status: verifyStatus,
+        revealOrder: linear.length,
       },
     });
     edges.push({
@@ -220,7 +272,11 @@ function buildGraph(job: JobDetailResource): {
       source: "agent",
       target: "verify",
       type: "smoothstep",
-      style: { stroke: "#cbd5e1", strokeWidth: 2 },
+      animated: job.status === "running",
+      style: {
+        stroke: verifyStatus === "pass" ? "#22c55e" : "#cbd5e1",
+        strokeWidth: 2,
+      },
     });
   }
 
@@ -236,12 +292,13 @@ function buildGraph(job: JobDetailResource): {
       label: "Complete",
       sublabel: job.rtoSeconds != null ? `${job.rtoSeconds}s` : undefined,
       status: completeStatus,
+      revealOrder: linear.length + checks.length + 1,
     },
   });
 
   const lastSources =
     checks.length > 0
-      ? checks.map((c) => `check-${c.id}`)
+      ? checks.map((check) => `check-${encodeURIComponent(check.key)}`)
       : ["verify"];
 
   for (const src of lastSources) {
@@ -272,8 +329,37 @@ export function RestorePipelineGraph({
   job: JobDetailResource;
   onSelectCheck: (check: JobResultResource | null) => void;
 }) {
-  const { nodes, edges } = useMemo(() => buildGraph(job), [job]);
+  const latestChecks = useMemo(() => getPipelineChecks(job), [job]);
+  const [observedChecks, setObservedChecks] = useState<{
+    jobId: string;
+    checks: PipelineCheck[];
+  }>({ jobId: job.id, checks: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setObservedChecks((current) => {
+      const checks = current.jobId === job.id ? [...current.checks] : [];
+      const indexes = new Map(checks.map((check, index) => [check.key, index]));
+      for (const check of latestChecks) {
+        const index = indexes.get(check.key);
+        if (index == null) {
+          indexes.set(check.key, checks.length);
+          checks.push(check);
+        } else {
+          checks[index] = { ...checks[index], ...check };
+        }
+      }
+      return { jobId: job.id, checks };
+    });
+  }, [job.id, latestChecks]);
+
+  const checks =
+    observedChecks.jobId === job.id ? observedChecks.checks : latestChecks;
+  const { nodes, edges } = useMemo(() => buildGraph(job, checks), [job, checks]);
+  const [flowInstance, setFlowInstance] =
+    useState<ReactFlowInstance<Node<GraphNodeData>, Edge> | null>(null);
+  const initialFitJobId = useRef<string | null>(null);
+  const completionFitKey = useRef<string | null>(null);
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node<GraphNodeData>) => {
@@ -286,34 +372,79 @@ export function RestorePipelineGraph({
   useEffect(() => {
     const failed = job.results.find((r) => r.status === "fail");
     if (failed) {
-      const id = `check-${failed.id}`;
+      const check = checks.find((candidate) => candidate.result?.id === failed.id);
+      if (!check) return;
+      const id = `check-${encodeURIComponent(check.key)}`;
       setSelectedId(id);
       onSelectCheck(failed);
     }
-  }, [job.id, job.results, onSelectCheck]);
+  }, [job.id, job.results, checks, onSelectCheck]);
+
+  useEffect(() => {
+    if (!flowInstance) return;
+
+    const terminal = ["pass", "fail", "error", "cancelled"].includes(job.status);
+    const shouldFitInitially = initialFitJobId.current !== job.id;
+    const fitKey = `${job.id}:${job.status}`;
+    const shouldFitOnCompletion =
+      terminal && completionFitKey.current !== fitKey;
+
+    if (!shouldFitInitially && !shouldFitOnCompletion) return;
+    initialFitJobId.current = job.id;
+    if (shouldFitOnCompletion) completionFitKey.current = fitKey;
+
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        void flowInstance.fitView({
+          padding: 0.2,
+          minZoom: 0.35,
+          maxZoom: 1.1,
+          duration: 450,
+        });
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [flowInstance, job.id, job.status, nodes.length]);
 
   const styledNodes = nodes.map((n) => ({
     ...n,
     selected: n.id === selectedId,
   }));
+  const graphHeight = Math.min(760, Math.max(420, 260 + checks.length * 88));
 
   return (
-    <div className="h-[420px] w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-      <ReactFlow
-        nodes={styledNodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodeClick={onNodeClick}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable
-        proOptions={{ hideAttribution: true }}
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-1 text-xs text-slate-500">
+        <span>
+          {checks.length} validation {checks.length === 1 ? "step" : "steps"} reported
+        </span>
+        {checks.length > 8 && <span>Use zoom and pan to explore the full diagram.</span>}
+      </div>
+      <div
+        className="w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+        style={{ height: graphHeight }}
       >
-        <Background gap={16} size={1} color="#e2e8f0" />
-        <Controls showInteractive={false} className="!shadow-sm" />
-      </ReactFlow>
+        <ReactFlow
+          nodes={styledNodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onInit={setFlowInstance}
+          onNodeClick={onNodeClick}
+          minZoom={0.25}
+          maxZoom={1.5}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background gap={16} size={1} color="#e2e8f0" />
+          <Controls showInteractive={false} className="!shadow-sm" />
+        </ReactFlow>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useForm, Controller, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlignLeft, ChevronDown, FileDown, List, Save, Wand2 } from "lucide-react";
+import { AlignLeft, ChevronDown, FileCode2, FileDown, List, Save } from "lucide-react";
 import { AppShell } from "../components/AppShell";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { PaginationBar } from "../components/PaginationBar";
@@ -503,7 +503,7 @@ export function ValidationPlansPage() {
               variant="composer"
               title="Proof Composer"
               subtitle="Schema in → revenant.yaml out"
-              icon={<Wand2 size={16} />}
+              icon={<FileCode2 size={16} />}
               badge={
                 <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand">
                   {composerStatus?.enabled ? "ready" : "off"}

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
+import { Calendar } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { getPlanDefinition, trialDaysRemaining } from "../lib/plans";
 
@@ -25,7 +25,7 @@ export function TrialStatusBar() {
       role="status"
     >
       <div className="flex items-center gap-2">
-        <Sparkles size={16} className={urgent ? "text-amber-600" : "text-blue-600"} />
+        <Calendar size={16} className={urgent ? "text-amber-600" : "text-blue-600"} />
         <span className="font-medium">
           {plan.name} trial · {daysLeft} day{daysLeft === 1 ? "" : "s"} left
         </span>
