@@ -5,10 +5,11 @@ import {
   Controls,
   Handle,
   Position,
+  useNodesInitialized,
+  useReactFlow,
   type Edge,
   type Node,
   type NodeProps,
-  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
@@ -84,6 +85,46 @@ function PipelineNode({ data, selected }: NodeProps<Node<GraphNodeData>>) {
 }
 
 const nodeTypes = { pipeline: PipelineNode };
+
+function GraphViewportController({
+  jobId,
+  status,
+  nodeCount,
+}: {
+  jobId: string;
+  status: string;
+  nodeCount: number;
+}) {
+  const { fitView } = useReactFlow<Node<GraphNodeData>, Edge>();
+  const nodesInitialized = useNodesInitialized();
+  const initialFitJob = useRef<string | null>(null);
+  const terminalFitJob = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!nodesInitialized) return;
+
+    const terminal = ["pass", "fail", "error", "cancelled"].includes(status);
+    const shouldFitInitially = initialFitJob.current !== jobId;
+    const shouldFitOnCompletion =
+      terminal && terminalFitJob.current !== jobId;
+    if (!shouldFitInitially && !shouldFitOnCompletion) return;
+
+    if (shouldFitInitially) initialFitJob.current = jobId;
+    if (shouldFitOnCompletion) terminalFitJob.current = jobId;
+
+    const frame = window.requestAnimationFrame(() => {
+      void fitView({
+        padding: 0.2,
+        minZoom: 0.35,
+        maxZoom: 1.1,
+        duration: 450,
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [fitView, jobId, nodeCount, nodesInitialized, status]);
+
+  return null;
+}
 
 function stageStatus(
   job: JobDetailResource,
@@ -356,10 +397,6 @@ export function RestorePipelineGraph({
   const checks =
     observedChecks.jobId === job.id ? observedChecks.checks : latestChecks;
   const { nodes, edges } = useMemo(() => buildGraph(job, checks), [job, checks]);
-  const [flowInstance, setFlowInstance] =
-    useState<ReactFlowInstance<Node<GraphNodeData>, Edge> | null>(null);
-  const initialFitJobId = useRef<string | null>(null);
-  const completionFitKey = useRef<string | null>(null);
 
   const onNodeClick = useCallback(
     (_: unknown, node: Node<GraphNodeData>) => {
@@ -379,36 +416,6 @@ export function RestorePipelineGraph({
       onSelectCheck(failed);
     }
   }, [job.id, job.results, checks, onSelectCheck]);
-
-  useEffect(() => {
-    if (!flowInstance) return;
-
-    const terminal = ["pass", "fail", "error", "cancelled"].includes(job.status);
-    const shouldFitInitially = initialFitJobId.current !== job.id;
-    const fitKey = `${job.id}:${job.status}`;
-    const shouldFitOnCompletion =
-      terminal && completionFitKey.current !== fitKey;
-
-    if (!shouldFitInitially && !shouldFitOnCompletion) return;
-    initialFitJobId.current = job.id;
-    if (shouldFitOnCompletion) completionFitKey.current = fitKey;
-
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        void flowInstance.fitView({
-          padding: 0.2,
-          minZoom: 0.35,
-          maxZoom: 1.1,
-          duration: 450,
-        });
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
-    };
-  }, [flowInstance, job.id, job.status, nodes.length]);
 
   const styledNodes = nodes.map((n) => ({
     ...n,
@@ -432,7 +439,6 @@ export function RestorePipelineGraph({
           nodes={styledNodes}
           edges={edges}
           nodeTypes={nodeTypes}
-          onInit={setFlowInstance}
           onNodeClick={onNodeClick}
           minZoom={0.25}
           maxZoom={1.5}
@@ -441,6 +447,11 @@ export function RestorePipelineGraph({
           elementsSelectable
           proOptions={{ hideAttribution: true }}
         >
+          <GraphViewportController
+            jobId={job.id}
+            status={job.status}
+            nodeCount={nodes.length}
+          />
           <Background gap={16} size={1} color="#e2e8f0" />
           <Controls showInteractive={false} className="!shadow-sm" />
         </ReactFlow>
