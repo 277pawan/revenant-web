@@ -943,9 +943,25 @@ export interface RedisProofResource {
   rpoObservedSeconds: number | null;
   rdbLastBgsaveStatus: string | null;
   errorMessage: string | null;
+  checks: RedisProofCheck[];
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+  /** How many times this run has been claimed. */
+  attempts: number;
+  /** Which executor claimed it: "cloud:<instance>" or "agent". */
+  claimedBy: string | null;
+  /** Why the last attempt was handed back to the queue. */
+  lastError: string | null;
+  /** "unreachable" | "auth" | "failed" — classifies lastError. */
+  lastErrorKind: string | null;
+}
+
+export interface RedisProofCheck {
+  name: string;
+  status: "pass" | "fail" | "skip";
+  message: string;
+  durationMs: number;
 }
 
 /** Result of POST /redis/test — never persisted. */

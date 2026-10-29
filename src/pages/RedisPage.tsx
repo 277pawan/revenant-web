@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { AppShell } from "../components/AppShell";
 import { PageHeader } from "../components/layout/PageHeader";
@@ -49,19 +50,32 @@ import {
   type RedisSnapshotResource,
 } from "../types/api";
 
-const redisFormSchema = z.object({
+const redisUrlSchema = z
+  .string()
+  .trim()
+  .min(1, "Redis URL is required")
+  .refine(
+    (v) => v.startsWith("redis://") || v.startsWith("rediss://"),
+    "Must start with redis:// or rediss://"
+  );
+
+const redisFormFields = {
   name: z.string().trim().min(1, "Name is required").max(255),
-  url: z
-    .string()
-    .trim()
-    .min(1, "Redis URL is required")
-    .refine(
-      (v) => v.startsWith("redis://") || v.startsWith("rediss://"),
-      "Must start with redis:// or rediss://"
-    ),
+  url: redisUrlSchema,
   databaseId: z.string().uuid().or(z.literal("")).optional(),
   snapshotEnabled: z.boolean(),
   snapshotRetentionHours: z.coerce.number().int().positive().optional(),
+};
+
+const redisFormSchema = z.object(redisFormFields);
+const redisEditFormSchema = redisFormSchema.extend({
+  url: z
+    .string()
+    .trim()
+    .refine(
+      (v) => !v || v.startsWith("redis://") || v.startsWith("rediss://"),
+      "Must start with redis:// or rediss://"
+    ),
 });
 
 type RedisFormValues = z.infer<typeof redisFormSchema>;
@@ -114,7 +128,7 @@ export function RedisPage() {
     setValue,
     formState: { errors },
   } = useForm<RedisFormValues>({
-    resolver: zodResolver(redisFormSchema),
+    resolver: zodResolver(editing ? redisEditFormSchema : redisFormSchema),
     defaultValues: defaultFormValues(),
   });
 
@@ -293,19 +307,11 @@ export function RedisPage() {
   async function runProof(resource: RedisResource) {
     setRunningProof(true);
     try {
-      const res = await api.startRedisProof(resource.id, {});
-      const p = res.proof;
-      if (p.snapshotId && p.expiresAt) {
-        toast.success(
-          "Restore proof queued",
-          `Snapshot will expire ${new Date(p.expiresAt).toLocaleString()}`
-        );
-      } else {
-        toast.success(
-          "Restore proof queued",
-          "Verify-in-place — no bytes are stored for this run"
-        );
-      }
+      await api.startRedisProof(resource.id, {});
+      toast.success(
+        "Proof queued",
+        "Revenant's cloud runner picks it up automatically — the restore checks appear below, usually within a few seconds."
+      );
       await loadDetail(resource.id);
       await load();
     } catch (err) {
@@ -393,20 +399,21 @@ export function RedisPage() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center">
           <HardDrive className="mx-auto mb-3 text-amber-600" size={32} />
           <h2 className="text-lg font-medium text-amber-900">
-            Redis proofs run from the CLI on the free plan
+            Redis restore proofs are available on Starter and Pro
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-amber-800">
-            No account needed. Run this on the machine that can reach your Redis and it
-            takes a snapshot, restores it into a throwaway server, and tells you whether
-            the backup actually loads.
+            Create and run Redis restore proofs from this page with a supported plan.
+            Revenant creates the proof record, runs its built-in restore checks, and
+            shows the results here. No proof file or validation script is required.
           </p>
-          <pre className="mx-auto mt-4 max-w-lg overflow-x-auto rounded-lg bg-slate-900 px-4 py-3 text-left text-xs text-slate-100">
-            revenant redis-prove --url redis://localhost:6379
-          </pre>
           <p className="mt-4 text-sm text-amber-800">
-            Want central snapshot retention and scheduled proofs?{" "}
-            <span className="font-medium">Starter</span> includes 1 Redis with a 24-hour
-            snapshot TTL.
+            <a
+              href="/settings/billing"
+              className="font-medium underline underline-offset-2"
+            >
+              View plans and billing
+            </a>{" "}
+            to enable Redis resources for this organization.
           </p>
         </div>
       </AppShell>
@@ -435,9 +442,31 @@ export function RedisPage() {
         )}
       </PageHeader>
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+        <p className="text-sm text-slate-600">
+          Revenant creates the proof and records each restore check here. No proof file
+          or script is needed.
+        </p>
+        <Link
+          to="/redis/guide"
+          className="shrink-0 text-sm font-medium text-brand underline"
+        >
+          Redis proof guide
+        </Link>
+      </div>
+
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1.5 text-xs font-medium text-red-800 disabled:opacity-50"
+          >
+            <Loader2 size={13} className={loading ? "animate-spin" : undefined} />
+            Retry
+          </button>
         </div>
       )}
 
@@ -467,6 +496,8 @@ export function RedisPage() {
             {(!editing || watchUrl.trim().length > 0) && (
               <RedisUrlTestPanel
                 value={watchUrl}
+                error={errors.url?.message}
+                required={!editing}
                 onChange={(v) => setValue("url", v, { shouldValidate: true })}
               />
             )}
@@ -511,7 +542,19 @@ export function RedisPage() {
                 </span>
               </label>
 
-              {watchSnapshotEnabled && (
+              {watchSnapshotEnabled && editing && (
+                <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                  The current retention policy is{" "}
+                  {formatRedisRetention(
+                    editing.snapshotRetentionHours ??
+                      resolveRedisRetentionHours(plan, 24)
+                  )}
+                  . Snapshot expiry is fixed at capture; editing this Redis does not
+                  change existing snapshots&apos; expiry times.
+                </p>
+              )}
+
+              {watchSnapshotEnabled && !editing && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
                   <Field
                     label="Retention window (TTL)"
@@ -579,9 +622,9 @@ export function RedisPage() {
         </form>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
         {/* ─── list ─────────────────────────────────────────────────────── */}
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <TableSearchBar
             value={search}
             onChange={setSearch}
@@ -602,147 +645,124 @@ export function RedisPage() {
             )}
           </div>
 
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-white text-left text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Keys</th>
-                <th className="px-4 py-3 font-medium">Proof</th>
-                <th className="px-4 py-3 font-medium">Snapshots</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    Loading…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-4 py-14 text-center">
-                    <HardDrive className="mx-auto mb-2 text-slate-300" size={32} />
-                    <p className="font-medium text-slate-800">
-                      {resources.length === 0 ? "No Redis instances yet" : "No matches"}
-                    </p>
-                    <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                      {resources.length === 0
-                        ? "Paste a Redis URL, test it, and Revenant will prove the backup restores."
-                        : `Nothing matches “${debouncedSearch.trim()}”.`}
-                    </p>
-                    {canWrite && resources.length === 0 && !atLimit && (
-                      <button
-                        type="button"
-                        onClick={openCreate}
-                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90"
-                      >
-                        <Plus size={16} />
-                        Add Redis
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((r) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => setSelectedId(r.id)}
-                    className={`cursor-pointer hover:bg-slate-50 ${
-                      selectedId === r.id ? "bg-brand/5" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{r.name}</div>
-                      <div className="font-mono text-xs text-slate-500">
-                        {r.host}:{r.port}/{r.dbIndex}
-                        {r.tls ? " · TLS" : ""}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {formatNumber(r.fingerprint?.totalKeys ?? null)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          VERIFICATION_TONE[r.lastVerificationStatus]
-                        }`}
-                      >
-                        {VERIFICATION_LABEL[r.lastVerificationStatus]}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {r.snapshotEnabled ? (
-                        <span className="text-xs text-slate-600">
-                          {formatRedisRetention(r.snapshotRetentionHours)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">Not stored</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-
-          {/* per-row actions live outside the table so row-click selection
-              stays simple and keyboard accessible */}
-          {canWrite && filtered.length > 0 && (
-            <div className="space-y-1 border-t border-slate-100 p-3">
-              {filtered.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
+          {loading ? (
+            <p className="px-4 py-8 text-center text-sm text-slate-500">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <div className="px-4 py-14 text-center">
+              <HardDrive className="mx-auto mb-2 text-slate-300" size={32} />
+              <p className="font-medium text-slate-800">
+                {resources.length === 0 ? "No Redis instances yet" : "No matches"}
+              </p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
+                {resources.length === 0
+                  ? "Paste a Redis URL, test it, and Revenant will prove the backup restores."
+                  : `Nothing matches “${debouncedSearch.trim()}”.`}
+              </p>
+              {canWrite && resources.length === 0 && !atLimit && (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand/90"
                 >
-                  <span className="truncate text-xs text-slate-600">{r.name}</span>
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {canRun && (
-                      <button
-                        type="button"
-                        onClick={() => void runProof(r)}
-                        disabled={runningProof}
-                        title="Run a restore proof"
-                        aria-label={`Run restore proof for ${r.name}`}
-                        className="rounded p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
-                      >
-                        <Play size={15} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void toggleSnapshotStorage(r)}
-                      title={
-                        r.snapshotEnabled
-                          ? "Disable snapshot storage"
-                          : "Enable snapshot storage"
-                      }
-                      aria-label={`Toggle snapshot storage for ${r.name}`}
-                      className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
-                    >
-                      <HardDrive size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEdit(r)}
-                      title="Edit Redis"
-                      aria-label={`Edit ${r.name}`}
-                      className="rounded p-1.5 text-slate-600 hover:bg-slate-100"
-                    >
-                      <Pencil size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRemoveTarget(r)}
-                      title="Delete Redis"
-                      aria-label={`Delete ${r.name}`}
-                      className="rounded p-1.5 text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  <Plus size={16} />
+                  Add Redis
+                </button>
+              )}
             </div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {filtered.map((r) => (
+                <li
+                  key={r.id}
+                  onClick={() => setSelectedId(r.id)}
+                  className={`min-w-0 cursor-pointer p-4 hover:bg-slate-50 ${
+                    selectedId === r.id ? "bg-brand/5" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="break-words font-medium text-slate-900">{r.name}</p>
+                    <p className="break-all font-mono text-xs text-slate-500">
+                      {r.host}:{r.port}/{r.dbIndex}
+                      {r.tls ? " · TLS" : ""}
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <span className="text-slate-500">
+                      {formatNumber(r.fingerprint?.totalKeys ?? null)} keys
+                    </span>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 font-medium ${
+                        VERIFICATION_TONE[r.lastVerificationStatus]
+                      }`}
+                    >
+                      {VERIFICATION_LABEL[r.lastVerificationStatus]}
+                    </span>
+                    <span className="text-slate-500">
+                      Snapshots:{" "}
+                      {r.snapshotEnabled
+                        ? formatRedisRetention(r.snapshotRetentionHours)
+                        : "off"}
+                    </span>
+                  </div>
+                  {(canWrite || canRun) && (
+                    <div
+                      className="mt-3 flex flex-wrap items-center gap-1"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {canRun && (
+                        <button
+                          type="button"
+                          onClick={() => void runProof(r)}
+                          disabled={runningProof}
+                          title="Create and run a restore proof"
+                          className="inline-flex items-center gap-1 rounded-md bg-brand px-2.5 py-1.5 text-xs font-medium text-white hover:bg-brand/90 disabled:opacity-50"
+                        >
+                          <Play size={13} />
+                          Run proof
+                        </button>
+                      )}
+                      {canWrite && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void toggleSnapshotStorage(r)}
+                            title={
+                              r.snapshotEnabled
+                                ? "Disable snapshot storage"
+                                : "Enable snapshot storage"
+                            }
+                            aria-label={`Toggle snapshot storage for ${r.name}`}
+                            className={`rounded p-1.5 hover:bg-slate-100 ${
+                              r.snapshotEnabled ? "text-brand" : "text-slate-500"
+                            }`}
+                          >
+                            <HardDrive size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEdit(r)}
+                            title="Edit Redis"
+                            aria-label={`Edit ${r.name}`}
+                            className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRemoveTarget(r)}
+                            title="Delete Redis"
+                            aria-label={`Delete ${r.name}`}
+                            className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 
@@ -754,7 +774,7 @@ export function RedisPage() {
             </div>
           ) : (
             <>
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-medium text-slate-900">
@@ -788,9 +808,15 @@ export function RedisPage() {
                     ) : (
                       <Play size={16} />
                     )}
-                    {runningProof ? "Starting…" : "Run restore proof"}
+                    {runningProof ? "Creating proof…" : "Create & run restore proof"}
                   </button>
                 )}
+                <Link
+                  to="/redis/guide"
+                  className="ml-3 inline-block text-sm font-medium text-brand underline"
+                >
+                  How restore proofs work
+                </Link>
               </div>
 
               <RedisFingerprintCard resource={selected} />

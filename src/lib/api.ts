@@ -697,16 +697,59 @@ export const api = {
   },
 
   /**
-   * Proofs + snapshots + monthly quota in ONE request.
-   * proofsUsedThisMonth is computed server-side; the proofs list is capped at
-   * 50, so summing it client-side would undercount past that.
+   * One page of proofs and snapshots plus the full monthly quota count.
    */
-  listRedisProofs(id: string): Promise<{
+  listRedisProofs(
+    id: string,
+    offsets: { proofOffset?: number; snapshotOffset?: number } = {}
+  ): Promise<{
     proofs: import("../types/api").RedisProofResource[];
     snapshots: import("../types/api").RedisSnapshotResource[];
+    proofsHasMore: boolean;
+    snapshotsHasMore: boolean;
     proofsUsedThisMonth: number;
   }> {
-    return request(`/api/v1/redis/${id}/proofs`);
+    const query = new URLSearchParams({
+      proofOffset: String(offsets.proofOffset ?? 0),
+      snapshotOffset: String(offsets.snapshotOffset ?? 0),
+    });
+    return request(`/api/v1/redis/${id}/proofs?${query}`);
+  },
+
+  listRedisProofHistory(
+    id: string,
+    query: { offset: number; limit: number; search: string }
+  ): Promise<{
+    proofs: import("../types/api").RedisProofResource[];
+    hasMore: boolean;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const params = new URLSearchParams({
+      offset: String(query.offset),
+      limit: String(query.limit),
+      search: query.search,
+    });
+    return request(`/api/v1/redis/${id}/proofs/history?${params}`);
+  },
+
+  listRedisSnapshotHistory(
+    id: string,
+    query: { offset: number; limit: number; search: string }
+  ): Promise<{
+    snapshots: import("../types/api").RedisSnapshotResource[];
+    hasMore: boolean;
+    total: number;
+    offset: number;
+    limit: number;
+  }> {
+    const params = new URLSearchParams({
+      offset: String(query.offset),
+      limit: String(query.limit),
+      search: query.search,
+    });
+    return request(`/api/v1/redis/${id}/snapshots/history?${params}`);
   },
 
   deleteRedisSnapshot(snapshotId: string): Promise<void> {

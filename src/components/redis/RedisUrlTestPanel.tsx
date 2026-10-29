@@ -17,10 +17,14 @@ import type { RedisTestResult } from "../../types/api";
 export function RedisUrlTestPanel({
   value,
   onChange,
+  error,
+  required = true,
   disabled,
 }: {
   value: string;
   onChange: (value: string) => void;
+  error?: string;
+  required?: boolean;
   disabled?: boolean;
 }) {
   const [testing, setTesting] = useState(false);
@@ -54,7 +58,8 @@ export function RedisUrlTestPanel({
       <Field
         label="Redis URL"
         htmlFor="redis-url"
-        required
+        required={required}
+        error={error}
         hint="redis://[:password]@host:port/db — or rediss:// for TLS. Stored encrypted; never shown again."
       >
         <div className="flex flex-col gap-2 sm:flex-row">

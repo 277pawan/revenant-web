@@ -126,6 +126,62 @@ export function redisTestAdvice(unreachable: boolean, error: string | null): str
   return error ?? "Could not verify this Redis URL.";
 }
 
+// ─── Proof state ────────────────────────────────────────────────────────────
+
+/**
+ * Proof statuses, in the customer's language.
+ *
+ * The distinction that matters: `fail` means the backup was tested and did
+ * not restore. `error` means the check could not be run. Collapsing them
+ * sends customers hunting for a broken backup they do not have.
+ */
+export const PROOF_STATUS_LABEL: Record<string, string> = {
+  pending: "Queued",
+  running: "Running",
+  pass: "Restored",
+  fail: "Restore failed",
+  error: "Could not run",
+};
+
+export const PROOF_STATUS_TONE: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  running: "bg-sky-100 text-sky-800",
+  pass: "bg-emerald-100 text-emerald-800",
+  fail: "bg-red-100 text-red-800",
+  error: "bg-red-100 text-red-700",
+};
+
+/** Who is executing this run. */
+export function proofExecutorLabel(claimedBy: string | null | undefined): string | null {
+  if (!claimedBy) return null;
+  if (claimedBy.startsWith("cloud:")) return "Revenant cloud runner";
+  if (claimedBy === "agent") return "Revenant agent";
+  return claimedBy;
+}
+
+/**
+ * Why a proof is still waiting, when we know.
+ *
+ * The old copy told every customer that "an online Redis proof worker must
+ * claim this run" — which was true of the old architecture and is not true
+ * now. Revenant's cloud runner claims proofs itself; an agent is only
+ * involved when the Redis is on a network the cloud cannot reach.
+ */
+export function proofWaitingNote(proof: {
+  status: string;
+  lastErrorKind?: string | null;
+  lastError?: string | null;
+}): string | null {
+  if (proof.status !== "pending") return null;
+  if (proof.lastErrorKind === "unreachable") {
+    return (
+      proof.lastError ??
+      "Revenant's cloud runner could not reach this Redis, so the run is waiting for the Revenant agent on your network."
+    );
+  }
+  return "Revenant's cloud runner picks this up automatically — usually within a few seconds.";
+}
+
 /** Snapshot rows sorted so live artifacts float to the top. */
 export function sortSnapshots(
   snapshots: RedisSnapshotResource[]

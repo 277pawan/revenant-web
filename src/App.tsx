@@ -28,6 +28,8 @@ import { OAuthCompletePage } from "./pages/OAuthCompletePage";
 import { RecoveredInstancesPage } from "./pages/RecoveredInstancesPage";
 import { RecoveryOperationsPage } from "./pages/RecoveryOperationsPage";
 import { RedisPage } from "./pages/RedisPage";
+import { RedisGuidePage } from "./pages/RedisGuidePage";
+import { RedisHistoryPage } from "./pages/RedisHistoryPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -223,6 +225,30 @@ export function App() {
         element={
           <ProtectedRoute>
             <RedisPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/redis/guide"
+        element={
+          <ProtectedRoute>
+            <RedisGuidePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/redis/:id/proofs"
+        element={
+          <ProtectedRoute>
+            <RedisHistoryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/redis/:id/snapshots"
+        element={
+          <ProtectedRoute>
+            <RedisHistoryPage />
           </ProtectedRoute>
         }
       />
