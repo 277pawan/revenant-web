@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { Clock, Loader2, RefreshCw, Search, Trash2 } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  CircleHelp,
+  Clock,
+  Download,
+  Loader2,
+  RefreshCw,
+  Search,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 
 import { AppShell } from "../components/AppShell";
 import { DateTimeText } from "../components/DateTimeText";
@@ -11,6 +22,8 @@ import { api } from "../lib/api";
 import {
   PROOF_STATUS_LABEL,
   PROOF_STATUS_TONE,
+  SNAPSHOT_STATUS_LABEL,
+  SNAPSHOT_STATUS_TONE,
   formatBytes,
   formatDuration,
   formatNumber,
@@ -23,23 +36,24 @@ import type { RedisProofResource, RedisSnapshotResource } from "../types/api";
 
 const PAGE_SIZE = 10;
 
-const PROOF_TONE = PROOF_STATUS_TONE;
-
-const SNAPSHOT_TONE: Record<string, string> = {
-  stored: "bg-emerald-100 text-emerald-800",
-  capturing: "bg-sky-100 text-sky-800",
-  expired: "bg-slate-100 text-slate-600",
-  deleted: "bg-slate-100 text-slate-600",
-  failed: "bg-red-100 text-red-700",
-};
-
+/**
+ * Proof and snapshot history.
+ *
+ * The list is a TABLE — one row per run, scannable at a glance — and the
+ * detail is opt-in. Clicking a row expands it in place with every check, the
+ * timings and the executor. The previous version dumped the entire check
+ * list for every row, which made the page unreadable the moment there was
+ * more than a handful of runs.
+ */
 export function RedisHistoryPage() {
   const { id = "" } = useParams<{ id: string }>();
   const location = useLocation();
   const { user } = useAuth();
   const toast = useToast();
   const snapshotsView = location.pathname.endsWith("/snapshots");
-  const canDelete = user ? roleHasPermission(user.role, "credentials:write") : false;
+  const canDelete = user
+    ? roleHasPermission(user.role, "credentials:write")
+    : false;
 
   const [resourceName, setResourceName] = useState("");
   const [proofs, setProofs] = useState<RedisProofResource[]>([]);
@@ -52,6 +66,8 @@ export function RedisHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [busySnapshot, setBusySnapshot] = useState<string | null>(null);
   const requestSequence = useRef(0);
 
   const loadPage = useCallback(async () => {
@@ -93,7 +109,7 @@ export function RedisHistoryPage() {
       setError(error instanceof Error ? error.message : "Unexpected error");
       toast.error(
         "Could not load Redis history",
-        error instanceof Error ? error.message : "Unexpected error"
+        error instanceof Error ? error.message : "Unexpected error",
       );
     } finally {
       if (sequence === requestSequence.current) setLoading(false);
@@ -120,14 +136,33 @@ export function RedisHistoryPage() {
     } catch (error) {
       toast.error(
         "Could not delete snapshot",
-        error instanceof Error ? error.message : "Unexpected error"
+        error instanceof Error ? error.message : "Unexpected error",
       );
+    }
+  }
+
+  async function downloadSnapshot(snapshotId: string) {
+    setBusySnapshot(snapshotId);
+    try {
+      await api.downloadRedisSnapshotArtifact(snapshotId);
+      toast.success(
+        "Artifact downloaded",
+        "Load it with: redis-server --dir . --dbfilename revenant-redis-<id>.rdb",
+      );
+    } catch (error) {
+      toast.error(
+        "Could not download the artifact",
+        error instanceof Error ? error.message : "Unexpected error",
+      );
+    } finally {
+      setBusySnapshot(null);
     }
   }
 
   function updateSearch(value: string) {
     setSearch(value);
     setOffset(0);
+    setExpanded(null);
   }
 
   const title = snapshotsView ? "Redis snapshots" : "Redis restore proofs";
@@ -138,7 +173,9 @@ export function RedisHistoryPage() {
         title={title}
         description={
           resourceName
-            ? `${resourceName} · Search and page through the full history.`
+            ? `${resourceName} · ${total} ${snapshotsView ? "snapshot" : "proof"}${
+                total === 1 ? "" : "s"
+              }`
             : "Search and page through the full history."
         }
       >
@@ -156,7 +193,7 @@ export function RedisHistoryPage() {
         </Link>
       </PageHeader>
 
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <nav className="mb-4 flex gap-2" aria-label="Redis history">
           <Link
             to={`/redis/${id}/proofs`}
@@ -205,7 +242,10 @@ export function RedisHistoryPage() {
               className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
               disabled={loading}
             >
-              <RefreshCw size={14} className={loading ? "animate-spin" : undefined} />
+              <RefreshCw
+                size={14}
+                className={loading ? "animate-spin" : undefined}
+              />
               Refresh
             </button>
           </div>
@@ -234,77 +274,123 @@ export function RedisHistoryPage() {
                   : "No snapshots have been captured yet."}
               </p>
             ) : (
-              <ul className="divide-y divide-slate-100">
-                {snapshots.map((snapshot) => {
-                  const expired =
-                    snapshot.status === "expired" ||
-                    snapshot.status === "deleted" ||
-                    !!snapshot.deletedAt;
-                  return (
-                    <li
-                      key={snapshot.id}
-                      className="flex min-w-0 items-start justify-between gap-3 p-4"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <DateTimeText value={snapshot.createdAt} />
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                              SNAPSHOT_TONE[snapshot.status] ??
-                              "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {snapshot.status}
-                          </span>
-                        </div>
-                        <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-                          <div>
-                            <dt className="text-slate-500">Artifact size</dt>
-                            <dd className="font-medium text-slate-700">
-                              {formatBytes(snapshot.byteSize)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-slate-500">Expires</dt>
-                            <dd className="font-medium text-slate-700">
-                              {!expired && snapshot.expiresAt ? (
-                                <>
-                                  <span className="inline-flex items-center gap-1">
-                                    <Clock size={12} />
-                                    {timeUntil(snapshot.expiresAt)}
-                                  </span>
-                                  <span className="mt-1 block text-slate-500">
-                                    <DateTimeText value={snapshot.expiresAt} />
-                                  </span>
-                                </>
-                              ) : (
-                                "Expired or deleted"
-                              )}
-                            </dd>
-                          </div>
-                          <div className="col-span-2 min-w-0 sm:col-span-1">
-                            <dt className="text-slate-500">Snapshot ID</dt>
-                            <dd className="break-all font-mono text-slate-600">
-                              {snapshot.id}
-                            </dd>
-                          </div>
-                        </dl>
-                      </div>
-                      {canDelete && !expired && (
-                        <button
-                          type="button"
-                          onClick={() => void deleteSnapshot(snapshot.id)}
-                          aria-label="Delete snapshot now"
-                          title="Delete snapshot now"
-                          className="shrink-0 rounded p-2 text-red-600 hover:bg-red-50"
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                      <th className="px-4 py-2.5 font-medium">Captured</th>
+                      <th className="px-4 py-2.5 font-medium">Artifact</th>
+                      <th className="px-4 py-2.5 font-medium">Expires</th>
+                      <th className="px-4 py-2.5 font-medium">Checksum</th>
+                      <th className="px-4 py-2.5 text-right font-medium">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {snapshots.map((snapshot) => {
+                      const expired =
+                        snapshot.status === "expired" ||
+                        snapshot.status === "deleted" ||
+                        !!snapshot.deletedAt;
+                      const downloadable =
+                        snapshot.status === "stored" && !!snapshot.storageKey;
+                      return (
+                        <tr
+                          key={snapshot.id}
+                          className="align-top hover:bg-slate-50/70"
                         >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                SNAPSHOT_STATUS_TONE[snapshot.status] ??
+                                "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {SNAPSHOT_STATUS_LABEL[snapshot.status] ??
+                                snapshot.status}
+                            </span>
+                            {snapshot.status === "failed" &&
+                              snapshot.errorMessage && (
+                                <p className="mt-1.5 max-w-xs break-words text-xs text-red-700">
+                                  {snapshot.errorMessage}
+                                </p>
+                              )}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                            <DateTimeText value={snapshot.createdAt} />
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                            {formatBytes(snapshot.byteSize)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                            {!expired && snapshot.expiresAt ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock size={12} />
+                                {timeUntil(snapshot.expiresAt)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            {snapshot.checksumSha256 ? (
+                              <span
+                                className="font-mono text-[11px] text-slate-500"
+                                title={snapshot.checksumSha256}
+                              >
+                                {snapshot.checksumSha256.slice(0, 12)}…
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              {downloadable && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void downloadSnapshot(snapshot.id)
+                                  }
+                                  disabled={busySnapshot === snapshot.id}
+                                  title="Download the stored RDB so you can restore it yourself"
+                                  aria-label="Download artifact"
+                                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  {busySnapshot === snapshot.id ? (
+                                    <Loader2
+                                      size={12}
+                                      className="animate-spin"
+                                    />
+                                  ) : (
+                                    <Download size={12} />
+                                  )}
+                                  RDB
+                                </button>
+                              )}
+                              {canDelete && !expired && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void deleteSnapshot(snapshot.id)
+                                  }
+                                  aria-label="Delete snapshot now"
+                                  title="Delete snapshot now"
+                                  className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )
           ) : proofs.length === 0 ? (
             <p className="px-4 py-12 text-center text-sm text-slate-500">
@@ -313,93 +399,84 @@ export function RedisHistoryPage() {
                 : "No restore proofs have been run yet."}
             </p>
           ) : (
-            <ul className="divide-y divide-slate-100">
-              {proofs.map((proof) => (
-                <li key={proof.id} className="min-w-0 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <DateTimeText value={proof.createdAt} />
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        PROOF_TONE[proof.status] ?? "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {PROOF_STATUS_LABEL[proof.status] ?? proof.status}
-                    </span>
-                  </div>
-                  {proofExecutorLabel(proof.claimedBy) && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Run by {proofExecutorLabel(proof.claimedBy)}
-                      {proof.attempts > 1 ? ` · ${proof.attempts} attempts` : ""}
-                    </p>
-                  )}
-                  {proof.status === "pending" && proof.lastError && (
-                    <p className="mt-2 break-words text-xs text-amber-700">
-                      {proof.lastError}
-                    </p>
-                  )}
-                  <dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-                    <div>
-                      <dt className="text-slate-500">Restored / source keys</dt>
-                      <dd className="font-medium text-slate-700">
-                        {proof.restoredKeyCount == null
-                          ? "—"
-                          : `${formatNumber(proof.restoredKeyCount)} / ${
-                              proof.sourceKeyCount == null
-                                ? "—"
-                                : formatNumber(proof.sourceKeyCount)
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50/70 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-4 py-2.5 font-medium">Status</th>
+                    <th className="px-4 py-2.5 font-medium">Run</th>
+                    <th className="px-4 py-2.5 font-medium">Keys</th>
+                    <th className="px-4 py-2.5 font-medium">RTO</th>
+                    <th className="px-4 py-2.5 font-medium">RPO</th>
+                    <th className="px-4 py-2.5 font-medium">Run by</th>
+                    <th className="px-4 py-2.5 text-right font-medium">
+                      Detail
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {proofs.map((proof) => {
+                    const open = expanded === proof.id;
+                    return (
+                      <tr key={proof.id} className="align-top">
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              PROOF_STATUS_TONE[proof.status] ??
+                              "bg-slate-100 text-slate-600"
                             }`}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-slate-500">Restore time (RTO)</dt>
-                      <dd className="font-medium text-slate-700">
-                        {formatDuration(proof.restoreSeconds)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-slate-500">Observed recovery point (RPO)</dt>
-                      <dd className="font-medium text-slate-700">
-                        {formatDuration(proof.rpoObservedSeconds)}
-                      </dd>
-                    </div>
-                    <div className="min-w-0">
-                      <dt className="text-slate-500">Proof ID</dt>
-                      <dd className="break-all font-mono text-slate-600">{proof.id}</dd>
-                    </div>
-                  </dl>
-                  {proof.errorMessage && (
-                    <p className="mt-3 break-words rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">
-                      {proof.errorMessage}
-                    </p>
-                  )}
-                  {proof.checks.length > 0 && (
-                    <details className="mt-3 border-t border-slate-100 pt-3">
-                      <summary className="cursor-pointer text-xs font-medium text-slate-700">
-                        View {proof.checks.length} restore checks
-                      </summary>
-                      <ul className="mt-2 space-y-2">
-                        {proof.checks.map((check) => (
-                          <li
-                            key={`${proof.id}-${check.name}`}
-                            className="flex min-w-0 justify-between gap-3 text-xs"
                           >
-                            <span className="min-w-0 break-words text-slate-600">
-                              <strong className="font-medium text-slate-800">
-                                {check.name}:
-                              </strong>{" "}
-                              {check.message}
+                            {PROOF_STATUS_LABEL[proof.status] ?? proof.status}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                          <DateTimeText value={proof.createdAt} />
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                          {proof.restoredKeyCount == null
+                            ? "—"
+                            : `${formatNumber(proof.restoredKeyCount)} / ${
+                                proof.sourceKeyCount == null
+                                  ? "—"
+                                  : formatNumber(proof.sourceKeyCount)
+                              }`}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                          {formatDuration(proof.restoreSeconds)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-700">
+                          {formatDuration(proof.rpoObservedSeconds)}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-600">
+                          {proofExecutorLabel(proof.claimedBy) ?? "—"}
+                          {proof.attempts > 1 && (
+                            <span className="text-slate-400">
+                              {" · "}
+                              {proof.attempts} attempts
                             </span>
-                            <span className="shrink-0 text-slate-500">
-                              {formatDuration(check.durationMs / 1000)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </li>
-              ))}
-            </ul>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setExpanded(open ? null : proof.id)}
+                            aria-expanded={open}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            View
+                            <ChevronDown
+                              size={12}
+                              className={open ? "rotate-180" : undefined}
+                            />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+            </div>
           )}
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
@@ -409,7 +486,9 @@ export function RedisHistoryPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
+                onClick={() =>
+                  setOffset((current) => Math.max(0, current - PAGE_SIZE))
+                }
                 disabled={offset === 0 || loading}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -430,6 +509,192 @@ export function RedisHistoryPage() {
           </footer>
         </section>
       </div>
+
+      {expanded && (
+        <ProofDetailModal
+          proof={proofs.find((p) => p.id === expanded) as RedisProofResource}
+          onClose={() => setExpanded(null)}
+        />
+      )}
     </AppShell>
+  );
+}
+
+/**
+ * The full detail of one proof.
+ *
+ * Everything the row cannot show: why it failed, who ran it, how the data
+ * was captured, and every individual check with its timing.
+ */
+function ProofDetailModal({
+  proof,
+  onClose,
+}: {
+  proof: RedisProofResource;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Restore proof ${proof.id}`}
+      onClick={onClose}
+    >
+    <div
+      className="w-full max-w-3xl rounded-xl bg-white shadow-2xl"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Restore proof detail</h2>
+          <p className="mt-0.5 text-xs text-slate-500">
+            <DateTimeText value={proof.createdAt} />
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Close
+        </button>
+      </header>
+      <div className="px-5 py-4">
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-1">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Summary
+          </h3>
+          <dl className="mt-2 space-y-1.5 text-xs">
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Run by</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {proofExecutorLabel(proof.claimedBy) ?? "—"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Attempts</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {proof.attempts}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Restored keys</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {formatNumber(proof.restoredKeyCount)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Source keys</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {formatNumber(proof.sourceKeyCount)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Restore time (RTO)</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {formatDuration(proof.restoreSeconds)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Recovery point (RPO)</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {formatDuration(proof.rpoObservedSeconds)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">RDB bytes</dt>
+              <dd className="text-right font-medium text-slate-700">
+                {formatBytes(proof.rdbBytes)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Started</dt>
+              <dd className="text-right text-slate-700">
+                <DateTimeText value={proof.startedAt} />
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Finished</dt>
+              <dd className="text-right text-slate-700">
+                <DateTimeText value={proof.completedAt} />
+              </dd>
+            </div>
+            <div className="pt-1">
+              <dt className="text-slate-500">Proof ID</dt>
+              <dd className="mt-0.5 break-all font-mono text-[11px] text-slate-600">
+                {proof.id}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="lg:col-span-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Restore checks
+          </h3>
+          {proof.errorMessage && (
+            <p className="mt-2 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {proof.errorMessage}
+            </p>
+          )}
+          {proof.status === "pending" && proof.lastError && (
+            <p className="mt-2 break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {proof.lastError}
+            </p>
+          )}
+          {proof.checks.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500">
+              No checks recorded yet.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1.5">
+              {proof.checks.map((check) => {
+                const Icon =
+                  check.status === "pass"
+                    ? CheckCircle2
+                    : check.status === "fail"
+                      ? XCircle
+                      : CircleHelp;
+                return (
+                  <li
+                    key={`${proof.id}-${check.name}-${check.status}`}
+                    className="flex min-w-0 items-start gap-2 rounded-md bg-white px-3 py-2 text-xs ring-1 ring-slate-200"
+                  >
+                    <Icon
+                      size={13}
+                      className={`mt-0.5 shrink-0 ${
+                        check.status === "pass"
+                          ? "text-emerald-600"
+                          : check.status === "fail"
+                            ? "text-red-600"
+                            : "text-slate-400"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium text-slate-800">
+                        {check.name}
+                      </span>
+                      <span className="block break-words text-slate-600">
+                        {check.message}
+                      </span>
+                    </span>
+                    {check.durationMs > 0 && (
+                      <span className="shrink-0 tabular-nums text-slate-400">
+                        {formatDuration(check.durationMs / 1000)}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+      </div>
+    </div>
+    </div>
   );
 }

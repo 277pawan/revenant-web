@@ -922,6 +922,8 @@ export interface RedisSnapshotResource {
   byteSize: number | null;
   checksumSha256: string | null;
   storageKey: string | null;
+  /** Why the artifact failed to store. Null unless status is "failed". */
+  errorMessage: string | null;
   metadata: RedisFingerprint | null;
   createdAt: string;
   expiresAt: string | null;

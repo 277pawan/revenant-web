@@ -756,4 +756,17 @@ export const api = {
     return request(`/api/v1/redis/snapshots/${snapshotId}`, { method: "DELETE" });
   },
 
+  /**
+   * Download the stored RDB artifact of a snapshot.
+   *
+   * This is the restore path: the customer gets the exact bytes Revenant
+   * captured, so they can load them into their own redis-server and prove
+   * the artifact is usable without trusting this product.
+   */
+  downloadRedisSnapshotArtifact(snapshotId: string): Promise<void> {
+    return downloadAttachment(
+      `/api/v1/redis/snapshots/${encodeURIComponent(snapshotId)}/artifact`,
+      `revenant-redis-${snapshotId}.rdb`
+    );
+  },
 };
