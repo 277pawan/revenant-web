@@ -3,11 +3,17 @@ import { Check, ChevronDown, ChevronRight, Clock3, LoaderCircle, PanelRightClose
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { isActiveJob, statusLabel } from "./workflow/jobStatus";
-import type { JobDetailResource, JobResource } from "../types/api";
+import type {
+  JobDetailResource,
+  JobResource,
+  RedisProofCheck,
+  RedisProofResource,
+} from "../types/api";
 
 const DRAWER_KEY = "revenant-background-work-open";
 const RECOVERY_TASKS_KEY = "revenant-background-recovery-tasks";
 const TRACKED_JOBS_KEY = "revenant-background-job-ids";
+const REDIS_TASKS_KEY = "revenant-background-redis-proof-ids";
 const RECENT_DONE_MS = 5 * 60 * 1000;
 
 type RecoveryTask = {
@@ -19,12 +25,76 @@ type RecoveryTask = {
   updatedAt: string;
 };
 
+type RedisProofTask = {
+  proofId: string;
+  redisResourceId: string;
+  resourceName: string;
+  status: string;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  lastError: string | null;
+  lastErrorKind: string | null;
+  errorMessage: string | null;
+  sourceKeyCount: number | null;
+  restoredKeyCount: number | null;
+  restoreSeconds: number | null;
+  checks: RedisProofCheck[];
+};
+
 function readRecoveryTasks(): RecoveryTask[] {
   try {
     return JSON.parse(sessionStorage.getItem(RECOVERY_TASKS_KEY) ?? "[]") as RecoveryTask[];
   } catch {
     return [];
   }
+}
+
+function readRedisProofTasks(): RedisProofTask[] {
+  try {
+    const tasks = JSON.parse(sessionStorage.getItem(REDIS_TASKS_KEY) ?? "[]") as RedisProofTask[];
+    return Array.isArray(tasks)
+      ? tasks.filter((task) => task.proofId && task.redisResourceId)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function redisProofPhase(task: RedisProofTask): string {
+  if (task.status === "pending") {
+    return task.lastErrorKind === "unreachable"
+      ? task.lastError ?? "Waiting for a runner on your Redis network."
+      : "Waiting for an available runner.";
+  }
+  if (task.status === "running") return "Capturing and restoring Redis data in an isolated worker.";
+  if (task.status === "pass") return "Restore proof passed.";
+  if (task.status === "fail") return "Restore proof finished with failed checks.";
+  if (task.status === "error") return "Proof could not run.";
+  return statusLabel(task.status);
+}
+
+function isActiveRedisProof(task: RedisProofTask): boolean {
+  return task.status === "pending" || task.status === "running";
+}
+
+function redisProofFromResource(proof: RedisProofResource): RedisProofTask {
+  return {
+    proofId: proof.id,
+    redisResourceId: proof.redisResourceId,
+    resourceName: "",
+    status: proof.status,
+    createdAt: proof.createdAt,
+    startedAt: proof.startedAt,
+    completedAt: proof.completedAt,
+    lastError: proof.lastError,
+    lastErrorKind: proof.lastErrorKind,
+    errorMessage: proof.errorMessage,
+    sourceKeyCount: proof.sourceKeyCount,
+    restoredKeyCount: proof.restoredKeyCount,
+    restoreSeconds: proof.restoreSeconds,
+    checks: proof.checks,
+  };
 }
 
 function phaseLabel(job: JobDetailResource | JobResource): string {
@@ -113,6 +183,7 @@ function elapsedLabel(startedAt: string | null, now: number): string {
 export function BackgroundWorkDrawer() {
   const [jobs, setJobs] = useState<JobDetailResource[]>([]);
   const [recoveryTasks, setRecoveryTasks] = useState<RecoveryTask[]>(readRecoveryTasks);
+  const [redisProofTasks, setRedisProofTasks] = useState<RedisProofTask[]>(readRedisProofTasks);
   const [open, setOpen] = useState(() => sessionStorage.getItem(DRAWER_KEY) !== "false");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -123,7 +194,7 @@ export function BackgroundWorkDrawer() {
     } catch {
       trackedIds = [];
     }
-    const [activeJobs, latestRecoveries] = await Promise.all([
+    const [activeJobs, latestRecoveries, latestRedisProofs] = await Promise.all([
       api.listActiveJobs().catch(() => null),
       Promise.all(readRecoveryTasks().map(async (task) => {
         try {
@@ -134,6 +205,23 @@ export function BackgroundWorkDrawer() {
           return task;
         }
       })).catch(() => readRecoveryTasks()),
+      Promise.all(readRedisProofTasks().map(async (task) => {
+        try {
+          const response = await api.listRedisProofHistory(task.redisResourceId, {
+            offset: 0,
+            limit: 10,
+            search: task.proofId,
+          });
+          const proof = response.proofs.find((candidate) => candidate.id === task.proofId);
+          if (!proof) return task;
+          return {
+            ...redisProofFromResource(proof),
+            resourceName: task.resourceName,
+          };
+        } catch {
+          return task;
+        }
+      })),
     ]);
     if (activeJobs) {
       const jobIds = [...new Set([...activeJobs.jobs.map((job) => job.id), ...trackedIds])];
@@ -166,6 +254,26 @@ export function BackgroundWorkDrawer() {
     );
     setRecoveryTasks(nextTasks);
     sessionStorage.setItem(RECOVERY_TASKS_KEY, JSON.stringify(nextTasks));
+    const nextRedisProofs = latestRedisProofs.filter((task) =>
+      isActiveRedisProof(task) ||
+      Date.now() - Date.parse(task.completedAt ?? task.createdAt) < RECENT_DONE_MS
+    );
+    setRedisProofTasks((current) => {
+      const currentById = new Map(current.map((task) => [task.proofId, task]));
+      for (const task of nextRedisProofs) {
+        const previous = currentById.get(task.proofId);
+        currentById.set(task.proofId, {
+          ...task,
+          resourceName: task.resourceName || previous?.resourceName || "Redis",
+        });
+      }
+      const retained = [...currentById.values()].filter((task) =>
+        isActiveRedisProof(task) ||
+        Date.now() - Date.parse(task.completedAt ?? task.createdAt) < RECENT_DONE_MS
+      );
+      sessionStorage.setItem(REDIS_TASKS_KEY, JSON.stringify(retained));
+      return retained;
+    });
   }, []);
 
   useEffect(() => {
@@ -182,10 +290,40 @@ export function BackgroundWorkDrawer() {
       setOpen(true);
       sessionStorage.setItem(DRAWER_KEY, "true");
     };
+    const onRedisProofStarted = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        proofId: string;
+        redisResourceId: string;
+        resourceName: string;
+      }>).detail;
+      const task: RedisProofTask = {
+        ...detail,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        startedAt: null,
+        completedAt: null,
+        lastError: null,
+        lastErrorKind: null,
+        errorMessage: null,
+        sourceKeyCount: null,
+        restoredKeyCount: null,
+        restoreSeconds: null,
+        checks: [],
+      };
+      setRedisProofTasks((current) => {
+        const next = [task, ...current.filter((item) => item.proofId !== task.proofId)];
+        sessionStorage.setItem(REDIS_TASKS_KEY, JSON.stringify(next));
+        return next;
+      });
+      setOpen(true);
+      sessionStorage.setItem(DRAWER_KEY, "true");
+    };
     window.addEventListener("revenant:recovery-started", onRecoveryStarted);
+    window.addEventListener("revenant:redis-proof-started", onRedisProofStarted);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("revenant:recovery-started", onRecoveryStarted);
+      window.removeEventListener("revenant:redis-proof-started", onRedisProofStarted);
     };
   }, [load]);
 
@@ -196,11 +334,12 @@ export function BackgroundWorkDrawer() {
     });
   }
 
-  const activeCount = jobs.filter((job) => isActiveJob(job.status)).length + recoveryTasks.filter(
-    (task) => !["available", "failed", "deleted"].includes(task.status)
-  ).length;
+  const activeCount =
+    jobs.filter((job) => isActiveJob(job.status)).length +
+    recoveryTasks.filter((task) => !["available", "failed", "deleted"].includes(task.status)).length +
+    redisProofTasks.filter(isActiveRedisProof).length;
 
-  if (activeCount === 0 && jobs.length === 0 && recoveryTasks.length === 0) return null;
+  if (activeCount === 0 && jobs.length === 0 && recoveryTasks.length === 0 && redisProofTasks.length === 0) return null;
 
   return (
     <>
@@ -228,7 +367,7 @@ export function BackgroundWorkDrawer() {
 
         <div className="max-h-[65vh] space-y-3 overflow-y-auto p-3">
           {jobs.length === 0 ? (
-            recoveryTasks.length === 0 && <p className="px-2 py-5 text-center text-sm text-slate-400">Your runs will appear here while they work.</p>
+            recoveryTasks.length === 0 && redisProofTasks.length === 0 && <p className="px-2 py-5 text-center text-sm text-slate-400">Your runs will appear here while they work.</p>
           ) : jobs.map((job) => {
             const active = isActiveJob(job.status);
             const isExpanded = expanded === job.id;
@@ -301,6 +440,75 @@ export function BackgroundWorkDrawer() {
                   <p className="mt-1 text-xs text-slate-400">{active ? `AWS is provisioning the instance (${task.status}).` : task.status === "available" ? "Instance is ready and retained in AWS." : `Restore ${task.status}.`}</p>
                   <Link to="/recovery-instances" onClick={() => { sessionStorage.setItem(DRAWER_KEY, "false"); setOpen(false); }} className="mt-2 inline-flex text-xs font-medium text-cyan-300 hover:text-cyan-100">Open recovery history</Link>
                 </div>
+              </article>
+            );
+          })}
+          {redisProofTasks.map((task) => {
+            const active = isActiveRedisProof(task);
+            const isExpanded = expanded === task.proofId;
+            const completedChecks = task.checks;
+            const phase = redisProofPhase(task);
+            return (
+              <article key={task.proofId} className="rounded-lg border border-white/10 bg-white/[0.04]">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isExpanded ? null : task.proofId)}
+                  className="flex w-full items-start gap-3 p-3 text-left"
+                >
+                  {active ? (
+                    <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-cyan-300" />
+                  ) : task.status === "pass" ? (
+                    <Check size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+                  ) : (
+                    <XCircle size={16} className="mt-0.5 shrink-0 text-amber-300" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{task.resourceName} Redis restore proof</span>
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-400">{phase}</span>
+                    <span className="mt-1 block text-[11px] text-slate-500">
+                      {active
+                        ? `${elapsedLabel(task.startedAt ?? task.createdAt, Date.now())} · This proof continues in the background.`
+                        : `${completedChecks.length} recorded check${completedChecks.length === 1 ? "" : "s"}`}
+                    </span>
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-white/10 px-3 py-2.5">
+                    <dl className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                      <div><dt className="text-slate-500">Keys restored</dt><dd>{task.restoredKeyCount ?? "—"} / {task.sourceKeyCount ?? "—"}</dd></div>
+                      <div><dt className="text-slate-500">Restore time</dt><dd>{task.restoreSeconds == null ? "—" : `${task.restoreSeconds}s`}</dd></div>
+                    </dl>
+                    {(task.errorMessage || task.lastError) && (
+                      <p className="mt-2 break-words rounded-md bg-white/5 px-2.5 py-2 text-xs text-slate-300">
+                        {task.errorMessage ?? task.lastError}
+                      </p>
+                    )}
+                    {completedChecks.length > 0 && (
+                      <ol className="mt-3 space-y-2">
+                        {completedChecks.map((check) => (
+                          <li key={`${task.proofId}-${check.name}`} className="flex items-start gap-2 text-xs">
+                            {check.status === "pass" ? <Check size={13} className="mt-0.5 text-emerald-300" /> : check.status === "fail" ? <XCircle size={13} className="mt-0.5 text-red-300" /> : <Clock3 size={13} className="mt-0.5 text-slate-500" />}
+                            <span className="min-w-0 flex-1 text-slate-300">
+                              <span className="font-medium">{check.name}</span>
+                              {check.message && <span className="mt-0.5 block break-words text-slate-500">{check.message}</span>}
+                            </span>
+                            <span className="shrink-0 text-[10px] uppercase text-slate-500">{check.status}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                    <Link
+                      to={`/redis/${task.redisResourceId}/proofs`}
+                      onClick={() => { sessionStorage.setItem(DRAWER_KEY, "false"); setOpen(false); }}
+                      className="mt-3 inline-flex text-xs font-medium text-cyan-300 hover:text-cyan-100"
+                    >
+                      Open proof history
+                    </Link>
+                  </div>
+                )}
               </article>
             );
           })}

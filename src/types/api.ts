@@ -932,6 +932,30 @@ export interface RedisSnapshotResource {
   lastVerificationStatus: RedisVerificationStatus;
 }
 
+export interface RedisSnapshotPreviewKey {
+  key: string;
+  type: string;
+  ttlSeconds: number | null;
+  preview: string;
+  previewEncoding: "text" | "base64";
+  truncated: boolean;
+}
+
+export interface RedisSnapshotPreviewDatabase {
+  database: number;
+  keyCount: number;
+  expires: number;
+  keys: RedisSnapshotPreviewKey[];
+}
+
+export interface RedisSnapshotPreview {
+  databases: RedisSnapshotPreviewDatabase[];
+  totalKeys: number;
+  sampledKeys: number;
+  sampleLimit: number;
+  truncated: boolean;
+}
+
 export interface RedisProofResource {
   id: string;
   redisResourceId: string;

@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Clock,
   Download,
+  Eye,
   Loader2,
   RefreshCw,
   Search,
@@ -16,6 +17,7 @@ import {
 import { AppShell } from "../components/AppShell";
 import { DateTimeText } from "../components/DateTimeText";
 import { PageHeader } from "../components/layout/PageHeader";
+import { RedisRestoreDialog } from "../components/redis/RedisRestoreDialog";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useToast } from "../components/toast/ToastProvider";
 import { api } from "../lib/api";
@@ -32,7 +34,11 @@ import {
 } from "../lib/redis-format";
 import { roleHasPermission } from "../types/api";
 import { useAuth } from "../lib/auth";
-import type { RedisProofResource, RedisSnapshotResource } from "../types/api";
+import type {
+  RedisProofResource,
+  RedisSnapshotPreview,
+  RedisSnapshotResource,
+} from "../types/api";
 
 const PAGE_SIZE = 10;
 
@@ -68,7 +74,16 @@ export function RedisHistoryPage() {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busySnapshot, setBusySnapshot] = useState<string | null>(null);
+  const [restoreFile, setRestoreFile] = useState<string | null>(null);
+  const [previewSnapshotId, setPreviewSnapshotId] = useState<string | null>(
+    null,
+  );
+  const [snapshotPreview, setSnapshotPreview] =
+    useState<RedisSnapshotPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const requestSequence = useRef(0);
+  const previewSequence = useRef(0);
 
   const loadPage = useCallback(async () => {
     const sequence = ++requestSequence.current;
@@ -144,11 +159,12 @@ export function RedisHistoryPage() {
   async function downloadSnapshot(snapshotId: string) {
     setBusySnapshot(snapshotId);
     try {
-      await api.downloadRedisSnapshotArtifact(snapshotId);
+      const { fileName } = await api.downloadRedisSnapshotArtifact(snapshotId);
       toast.success(
         "Artifact downloaded",
-        "Load it with: redis-server --dir . --dbfilename revenant-redis-<id>.rdb",
+        "This is a binary Redis dump. Restore instructions are open.",
       );
+      setRestoreFile(fileName);
     } catch (error) {
       toast.error(
         "Could not download the artifact",
@@ -159,10 +175,43 @@ export function RedisHistoryPage() {
     }
   }
 
+  async function previewSnapshot(snapshotId: string) {
+    const sequence = ++previewSequence.current;
+    setPreviewSnapshotId(snapshotId);
+    setSnapshotPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    try {
+      const { preview } = await api.previewRedisSnapshotArtifact(snapshotId);
+      if (sequence === previewSequence.current) setSnapshotPreview(preview);
+    } catch (error) {
+      if (sequence === previewSequence.current) {
+        setPreviewError(
+          error instanceof Error ? error.message : "Unexpected error",
+        );
+      }
+    } finally {
+      if (sequence === previewSequence.current) setPreviewLoading(false);
+    }
+  }
+
+  function closeSnapshotPreview() {
+    previewSequence.current += 1;
+    setPreviewSnapshotId(null);
+    setSnapshotPreview(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }
+
   function updateSearch(value: string) {
     setSearch(value);
     setOffset(0);
     setExpanded(null);
+  }
+
+  function changePage(nextOffset: number) {
+    setExpanded(null);
+    setOffset(nextOffset);
   }
 
   const title = snapshotsView ? "Redis snapshots" : "Redis restore proofs";
@@ -352,11 +401,26 @@ export function RedisHistoryPage() {
                                 <button
                                   type="button"
                                   onClick={() =>
+                                    void previewSnapshot(snapshot.id)
+                                  }
+                                  disabled={busySnapshot === snapshot.id}
+                                  title="Inspect a limited sample of keys and values from this snapshot"
+                                  aria-label="Preview snapshot data"
+                                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                                >
+                                  <Eye size={12} />
+                                  Preview data
+                                </button>
+                              )}
+                              {downloadable && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
                                     void downloadSnapshot(snapshot.id)
                                   }
                                   disabled={busySnapshot === snapshot.id}
-                                  title="Download the stored RDB so you can restore it yourself"
-                                  aria-label="Download artifact"
+                                  title="Download the stored RDB and open restore instructions"
+                                  aria-label="Download and restore snapshot"
                                   className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                                 >
                                   {busySnapshot === snapshot.id ? (
@@ -367,7 +431,7 @@ export function RedisHistoryPage() {
                                   ) : (
                                     <Download size={12} />
                                   )}
-                                  RDB
+                                  Download & restore
                                 </button>
                               )}
                               {canDelete && !expired && (
@@ -464,10 +528,7 @@ export function RedisHistoryPage() {
                             className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
                           >
                             View
-                            <ChevronDown
-                              size={12}
-                              className={open ? "rotate-180" : undefined}
-                            />
+                            <Eye size={12} />
                           </button>
                         </td>
                       </tr>
@@ -475,7 +536,6 @@ export function RedisHistoryPage() {
                   })}
                 </tbody>
               </table>
-
             </div>
           )}
 
@@ -486,9 +546,7 @@ export function RedisHistoryPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  setOffset((current) => Math.max(0, current - PAGE_SIZE))
-                }
+                onClick={() => changePage(Math.max(0, offset - PAGE_SIZE))}
                 disabled={offset === 0 || loading}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -499,7 +557,7 @@ export function RedisHistoryPage() {
               </span>
               <button
                 type="button"
-                onClick={() => setOffset((current) => current + PAGE_SIZE)}
+                onClick={() => changePage(offset + PAGE_SIZE)}
                 disabled={!hasMore || loading}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -516,7 +574,145 @@ export function RedisHistoryPage() {
           onClose={() => setExpanded(null)}
         />
       )}
+      {restoreFile && (
+        <RedisRestoreDialog
+          fileName={restoreFile}
+          onClose={() => setRestoreFile(null)}
+        />
+      )}
+      {previewSnapshotId && (
+        <RedisSnapshotPreviewModal
+          preview={snapshotPreview}
+          loading={previewLoading}
+          error={previewError}
+          onClose={closeSnapshotPreview}
+        />
+      )}
     </AppShell>
+  );
+}
+
+function RedisSnapshotPreviewModal({
+  preview,
+  loading,
+  error,
+  onClose,
+}: {
+  preview: RedisSnapshotPreview | null;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Redis snapshot data preview"
+      onClick={onClose}
+    >
+      <div
+        className="redis-panel-in w-full max-w-4xl rounded-xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              Snapshot data preview
+            </h2>
+            <p className="mt-1 max-w-2xl text-xs text-amber-800">
+              This opt-in preview may contain sensitive values. It samples at
+              most 20 keys and shows only a small excerpt; preview data is not
+              stored.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close preview"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+          >
+            <XCircle size={18} />
+          </button>
+        </header>
+        <div className="max-h-[70vh] overflow-y-auto p-5">
+          {loading ? (
+            <p className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+              <Loader2 size={15} className="animate-spin" />
+              Loading a limited sample from the isolated snapshot…
+            </p>
+          ) : error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              {error}
+            </div>
+          ) : preview ? (
+            <>
+              <p className="mb-4 text-xs text-slate-600">
+                {formatNumber(preview.totalKeys)} keys across{" "}
+                {preview.databases.length} database
+                {preview.databases.length === 1 ? "" : "s"} · showing{" "}
+                {preview.sampledKeys} of at most {preview.sampleLimit}
+                {preview.truncated ? " · sample is partial" : ""}
+              </p>
+              <div className="space-y-4">
+                {preview.databases.map((database) => (
+                  <section
+                    key={database.database}
+                    className="overflow-hidden rounded-lg border border-slate-200"
+                  >
+                    <h3 className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800">
+                      Database {database.database} ·{" "}
+                      {formatNumber(database.keyCount)} keys
+                    </h3>
+                    {database.keys.length === 0 ? (
+                      <p className="p-3 text-xs text-slate-500">
+                        No sample keys were found in this database.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {database.keys.map((key, index) => (
+                          <article
+                            key={`${database.database}-${index}`}
+                            className="p-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                              <code className="break-all font-semibold text-slate-900">
+                                {key.key}
+                              </code>
+                              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                                {key.type}
+                              </span>
+                              <span className="text-slate-500">
+                                {key.ttlSeconds === null
+                                  ? "No expiry"
+                                  : `TTL ${key.ttlSeconds}s`}
+                              </span>
+                            </div>
+                            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-2 text-xs text-slate-700">
+                              {key.preview}
+                              {key.previewEncoding === "base64" && (
+                                <span className="block text-[10px] text-slate-500">
+                                  Binary content shown as base64
+                                </span>
+                              )}
+                              {key.truncated && (
+                                <span className="block text-[10px] text-slate-500">
+                                  Excerpt truncated
+                                </span>
+                              )}
+                            </pre>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -541,160 +737,162 @@ function ProofDetailModal({
       aria-label={`Restore proof ${proof.id}`}
       onClick={onClose}
     >
-    <div
-      className="w-full max-w-3xl rounded-xl bg-white shadow-2xl"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">Restore proof detail</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            <DateTimeText value={proof.createdAt} />
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-        >
-          Close
-        </button>
-      </header>
-      <div className="px-5 py-4">
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Summary
-          </h3>
-          <dl className="mt-2 space-y-1.5 text-xs">
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Run by</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {proofExecutorLabel(proof.claimedBy) ?? "—"}
-              </dd>
+      <div
+        className="redis-panel-in w-full max-w-3xl rounded-xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">
+              Restore proof detail
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              <DateTimeText value={proof.createdAt} />
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </header>
+        <div className="px-5 py-4">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-1">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Summary
+              </h3>
+              <dl className="mt-2 space-y-1.5 text-xs">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Run by</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {proofExecutorLabel(proof.claimedBy) ?? "—"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Attempts</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {proof.attempts}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Restored keys</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {formatNumber(proof.restoredKeyCount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Source keys</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {formatNumber(proof.sourceKeyCount)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Restore time (RTO)</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {formatDuration(proof.restoreSeconds)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Recovery point (RPO)</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {formatDuration(proof.rpoObservedSeconds)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">RDB bytes</dt>
+                  <dd className="text-right font-medium text-slate-700">
+                    {formatBytes(proof.rdbBytes)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Started</dt>
+                  <dd className="text-right text-slate-700">
+                    <DateTimeText value={proof.startedAt} />
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-slate-500">Finished</dt>
+                  <dd className="text-right text-slate-700">
+                    <DateTimeText value={proof.completedAt} />
+                  </dd>
+                </div>
+                <div className="pt-1">
+                  <dt className="text-slate-500">Proof ID</dt>
+                  <dd className="mt-0.5 break-all font-mono text-[11px] text-slate-600">
+                    {proof.id}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Attempts</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {proof.attempts}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Restored keys</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {formatNumber(proof.restoredKeyCount)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Source keys</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {formatNumber(proof.sourceKeyCount)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Restore time (RTO)</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {formatDuration(proof.restoreSeconds)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Recovery point (RPO)</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {formatDuration(proof.rpoObservedSeconds)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">RDB bytes</dt>
-              <dd className="text-right font-medium text-slate-700">
-                {formatBytes(proof.rdbBytes)}
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Started</dt>
-              <dd className="text-right text-slate-700">
-                <DateTimeText value={proof.startedAt} />
-              </dd>
-            </div>
-            <div className="flex justify-between gap-3">
-              <dt className="text-slate-500">Finished</dt>
-              <dd className="text-right text-slate-700">
-                <DateTimeText value={proof.completedAt} />
-              </dd>
-            </div>
-            <div className="pt-1">
-              <dt className="text-slate-500">Proof ID</dt>
-              <dd className="mt-0.5 break-all font-mono text-[11px] text-slate-600">
-                {proof.id}
-              </dd>
-            </div>
-          </dl>
-        </div>
 
-        <div className="lg:col-span-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Restore checks
-          </h3>
-          {proof.errorMessage && (
-            <p className="mt-2 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              {proof.errorMessage}
-            </p>
-          )}
-          {proof.status === "pending" && proof.lastError && (
-            <p className="mt-2 break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {proof.lastError}
-            </p>
-          )}
-          {proof.checks.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">
-              No checks recorded yet.
-            </p>
-          ) : (
-            <ul className="mt-2 space-y-1.5">
-              {proof.checks.map((check) => {
-                const Icon =
-                  check.status === "pass"
-                    ? CheckCircle2
-                    : check.status === "fail"
-                      ? XCircle
-                      : CircleHelp;
-                return (
-                  <li
-                    key={`${proof.id}-${check.name}-${check.status}`}
-                    className="flex min-w-0 items-start gap-2 rounded-md bg-white px-3 py-2 text-xs ring-1 ring-slate-200"
-                  >
-                    <Icon
-                      size={13}
-                      className={`mt-0.5 shrink-0 ${
-                        check.status === "pass"
-                          ? "text-emerald-600"
-                          : check.status === "fail"
-                            ? "text-red-600"
-                            : "text-slate-400"
-                      }`}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="font-medium text-slate-800">
-                        {check.name}
-                      </span>
-                      <span className="block break-words text-slate-600">
-                        {check.message}
-                      </span>
-                    </span>
-                    {check.durationMs > 0 && (
-                      <span className="shrink-0 tabular-nums text-slate-400">
-                        {formatDuration(check.durationMs / 1000)}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+            <div className="lg:col-span-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Restore checks
+              </h3>
+              {proof.errorMessage && (
+                <p className="mt-2 break-words rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {proof.errorMessage}
+                </p>
+              )}
+              {proof.status === "pending" && proof.lastError && (
+                <p className="mt-2 break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {proof.lastError}
+                </p>
+              )}
+              {proof.checks.length === 0 ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  No checks recorded yet.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-1.5">
+                  {proof.checks.map((check) => {
+                    const Icon =
+                      check.status === "pass"
+                        ? CheckCircle2
+                        : check.status === "fail"
+                          ? XCircle
+                          : CircleHelp;
+                    return (
+                      <li
+                        key={`${proof.id}-${check.name}-${check.status}`}
+                        className="flex min-w-0 items-start gap-2 rounded-md bg-white px-3 py-2 text-xs ring-1 ring-slate-200"
+                      >
+                        <Icon
+                          size={13}
+                          className={`mt-0.5 shrink-0 ${
+                            check.status === "pass"
+                              ? "text-emerald-600"
+                              : check.status === "fail"
+                                ? "text-red-600"
+                                : "text-slate-400"
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium text-slate-800">
+                            {check.name}
+                          </span>
+                          <span className="block break-words text-slate-600">
+                            {check.message}
+                          </span>
+                        </span>
+                        {check.durationMs > 0 && (
+                          <span className="shrink-0 tabular-nums text-slate-400">
+                            {formatDuration(check.durationMs / 1000)}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-      </div>
-    </div>
     </div>
   );
 }

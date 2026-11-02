@@ -4,9 +4,10 @@ import type { PaginationMeta } from "../types/api";
 type Props = {
   pagination: PaginationMeta;
   onPageChange: (page: number) => void;
+  disabled?: boolean;
 };
 
-export function PaginationBar({ pagination, onPageChange }: Props) {
+export function PaginationBar({ pagination, onPageChange, disabled = false }: Props) {
   const { page, pageSize, total, totalPages } = pagination;
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
@@ -21,7 +22,7 @@ export function PaginationBar({ pagination, onPageChange }: Props) {
       <div className="flex items-center gap-2">
         <button
           type="button"
-          disabled={page <= 1}
+          disabled={disabled || page <= 1}
           onClick={() => onPageChange(page - 1)}
           className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
         >
@@ -33,7 +34,7 @@ export function PaginationBar({ pagination, onPageChange }: Props) {
         </span>
         <button
           type="button"
-          disabled={page >= totalPages}
+          disabled={disabled || page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm disabled:opacity-40"
         >

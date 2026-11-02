@@ -30,6 +30,7 @@ import type {
   LoginRequest,
   LoginResponse,
   Paginated,
+  RedisSnapshotPreview,
   RegisterRequest,
   ScheduleResource,
   TeamMemberResource,
@@ -99,7 +100,28 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-async function downloadAttachment(path: string, filename: string): Promise<void> {
+function attachmentFileName(
+  disposition: string | null,
+  fallback: string
+): string {
+  if (!disposition) return fallback;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      return fallback;
+    }
+  }
+  const quoted = /filename="([^"]+)"/i.exec(disposition);
+  if (quoted?.[1]) return quoted[1];
+  return fallback;
+}
+
+async function downloadAttachment(
+  path: string,
+  filename: string
+): Promise<{ fileName: string }> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
     headers: authHeaders(),
@@ -108,13 +130,18 @@ async function downloadAttachment(path: string, filename: string): Promise<void>
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error ?? `Download failed (${res.status})`);
   }
+  const fileName = attachmentFileName(
+    res.headers.get("content-disposition"),
+    filename
+  );
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = fileName;
   a.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { fileName };
 }
 
 export const api = {
@@ -647,8 +674,12 @@ export const api = {
     });
   },
 
-  listRedisResources(): Promise<{ resources: import("../types/api").RedisResource[] }> {
-    return request("/api/v1/redis");
+  listRedisResources(
+    page = 1,
+    pageSize = 20,
+    search?: string
+  ): Promise<Paginated<import("../types/api").RedisResource>> {
+    return request(withQuery("/api/v1/redis", { page, pageSize, search }));
   },
 
   getRedisResource(id: string): Promise<{ resource: import("../types/api").RedisResource }> {
@@ -756,6 +787,14 @@ export const api = {
     return request(`/api/v1/redis/snapshots/${snapshotId}`, { method: "DELETE" });
   },
 
+  previewRedisSnapshotArtifact(
+    snapshotId: string
+  ): Promise<{ preview: RedisSnapshotPreview }> {
+    return request(
+      `/api/v1/redis/snapshots/${encodeURIComponent(snapshotId)}/preview`
+    );
+  },
+
   /**
    * Download the stored RDB artifact of a snapshot.
    *
@@ -763,7 +802,9 @@ export const api = {
    * captured, so they can load them into their own redis-server and prove
    * the artifact is usable without trusting this product.
    */
-  downloadRedisSnapshotArtifact(snapshotId: string): Promise<void> {
+  downloadRedisSnapshotArtifact(
+    snapshotId: string
+  ): Promise<{ fileName: string }> {
     return downloadAttachment(
       `/api/v1/redis/snapshots/${encodeURIComponent(snapshotId)}/artifact`,
       `revenant-redis-${snapshotId}.rdb`

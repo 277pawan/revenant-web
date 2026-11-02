@@ -19,6 +19,7 @@ import { AppShell } from "../components/AppShell";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DateTimeText } from "../components/DateTimeText";
+import { PaginationBar } from "../components/PaginationBar";
 import { TableSearchBar } from "../components/TableSearchBar";
 import { WorkflowPicker } from "../components/WorkflowPicker";
 import { Field, Input, Select } from "../components/ui/Field";
@@ -26,6 +27,7 @@ import { useToast } from "../components/toast/ToastProvider";
 import { RedisUrlTestPanel } from "../components/redis/RedisUrlTestPanel";
 import { RedisFingerprintCard } from "../components/redis/RedisFingerprintCard";
 import { RedisProofHistory } from "../components/redis/RedisProofHistory";
+import { RedisRestoreDialog } from "../components/redis/RedisRestoreDialog";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -45,10 +47,19 @@ import {
 import {
   roleHasPermission,
   type OrganizationPlan,
+  type PaginationMeta,
   type RedisProofResource,
   type RedisResource,
   type RedisSnapshotResource,
 } from "../types/api";
+
+const PAGE_SIZE = 20;
+const emptyPagination: PaginationMeta = {
+  page: 1,
+  pageSize: PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+};
 
 const redisUrlSchema = z
   .string()
@@ -101,10 +112,13 @@ export function RedisPage() {
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
 
   const [resources, setResources] = useState<RedisResource[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>(emptyPagination);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  const [restoreFile, setRestoreFile] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<RedisResource | null>(null);
@@ -140,14 +154,15 @@ export function RedisPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.listRedisResources();
-      setResources(res.resources);
+      const res = await api.listRedisResources(page, PAGE_SIZE, debouncedSearch);
+      setResources(res.data);
+      setPagination(res.pagination);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load Redis resources");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     void load();
@@ -170,15 +185,15 @@ export function RedisPage() {
     }
   }, [toast]);
 
-  // Auto-select the first resource so the detail panel is never empty on desktop.
   useEffect(() => {
-    if (!selectedId && resources.length > 0) {
+    if (resources.length === 0) {
+      if (!loading) setSelectedId(null);
+      return;
+    }
+    if (!resources.some((resource) => resource.id === selectedId)) {
       setSelectedId(resources[0].id);
     }
-    if (selectedId && !resources.some((r) => r.id === selectedId)) {
-      setSelectedId(resources[0]?.id ?? null);
-    }
-  }, [resources, selectedId]);
+  }, [resources, selectedId, loading]);
 
   useEffect(() => {
     if (selectedId) void loadDetail(selectedId);
@@ -208,16 +223,10 @@ export function RedisPage() {
     [resources, selectedId]
   );
 
-  const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    if (!q) return resources;
-    return resources.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        `${r.host}:${r.port}`.toLowerCase().includes(q) ||
-        (r.engineVersion ?? "").toLowerCase().includes(q)
-    );
-  }, [resources, debouncedSearch]);
+  function updateSearch(value: string) {
+    setSearch(value);
+    setPage(1);
+  }
 
   function closeForm() {
     setShowForm(false);
@@ -307,10 +316,17 @@ export function RedisPage() {
   async function runProof(resource: RedisResource) {
     setRunningProof(true);
     try {
-      await api.startRedisProof(resource.id, {});
+      const { proof } = await api.startRedisProof(resource.id, {});
+      window.dispatchEvent(new CustomEvent("revenant:redis-proof-started", {
+        detail: {
+          proofId: proof.proofId,
+          redisResourceId: resource.id,
+          resourceName: resource.name,
+        },
+      }));
       toast.success(
         "Proof queued",
-        "Revenant's cloud runner picks it up automatically — the restore checks appear below, usually within a few seconds."
+        "The background worker will run the restore checks. Track its progress in Background work."
       );
       await loadDetail(resource.id);
       await load();
@@ -387,6 +403,18 @@ export function RedisPage() {
     }
   }
 
+  async function downloadSnapshot(snapshotId: string) {
+    try {
+      const { fileName } = await api.downloadRedisSnapshotArtifact(snapshotId);
+      setRestoreFile(fileName);
+    } catch (err) {
+      toast.error(
+        "Could not download the snapshot",
+        err instanceof Error ? err.message : "Unexpected error"
+      );
+    }
+  }
+
   // ─── plan gate ───────────────────────────────────────────────────────────
 
   if (planLimits.redisResources === 0) {
@@ -420,9 +448,11 @@ export function RedisPage() {
     );
   }
 
-  const atLimit =
-    planLimits.redisResources != null && resources.length >= planLimits.redisResources;
   const proofLimit = planLimits.redisRestoreProofsPerMonth;
+  const atLimit =
+    planLimits.redisResources != null &&
+    !debouncedSearch.trim() &&
+    pagination.total >= planLimits.redisResources;
 
   return (
     <AppShell>
@@ -627,13 +657,13 @@ export function RedisPage() {
         <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <TableSearchBar
             value={search}
-            onChange={setSearch}
+            onChange={updateSearch}
             placeholder="Search Redis by name, host, or version…"
           />
 
           <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2 text-xs text-slate-600">
             <span>
-              {resources.length}
+              {pagination.total}
               {planLimits.redisResources != null
                 ? ` of ${planLimits.redisResources} used`
                 : " registered"}
@@ -647,18 +677,18 @@ export function RedisPage() {
 
           {loading ? (
             <p className="px-4 py-8 text-center text-sm text-slate-500">Loading…</p>
-          ) : filtered.length === 0 ? (
+          ) : resources.length === 0 ? (
             <div className="px-4 py-14 text-center">
               <HardDrive className="mx-auto mb-2 text-slate-300" size={32} />
               <p className="font-medium text-slate-800">
-                {resources.length === 0 ? "No Redis instances yet" : "No matches"}
+                {debouncedSearch.trim() ? "No matches" : "No Redis instances yet"}
               </p>
               <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
-                {resources.length === 0
-                  ? "Paste a Redis URL, test it, and Revenant will prove the backup restores."
-                  : `Nothing matches “${debouncedSearch.trim()}”.`}
+                {debouncedSearch.trim()
+                  ? `Nothing matches “${debouncedSearch.trim()}”.`
+                  : "Paste a Redis URL, test it, and Revenant will prove the backup restores."}
               </p>
-              {canWrite && resources.length === 0 && !atLimit && (
+              {canWrite && !debouncedSearch.trim() && !atLimit && (
                 <button
                   type="button"
                   onClick={openCreate}
@@ -671,7 +701,7 @@ export function RedisPage() {
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">
-              {filtered.map((r) => (
+              {resources.map((r) => (
                 <li
                   key={r.id}
                   onClick={() => setSelectedId(r.id)}
@@ -763,6 +793,13 @@ export function RedisPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {pagination.total > 0 && (
+            <PaginationBar
+              pagination={pagination}
+              onPageChange={setPage}
+              disabled={loading}
+            />
           )}
         </div>
 

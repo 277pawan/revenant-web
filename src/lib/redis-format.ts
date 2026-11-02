@@ -199,3 +199,21 @@ export function sortSnapshots(
 export function isRedisProven(resource: RedisResource): boolean {
   return resource.lastVerificationStatus === "verified";
 }
+
+/** Filename the API always serves after decoding storage compression. */
+export function redisSnapshotFileName(snapshotId: string): string {
+  return `revenant-redis-${snapshotId}.rdb`;
+}
+
+/**
+ * Commands to load a downloaded RDB on a spare port.
+ * The file is a binary Redis dump — it will not open as text.
+ */
+export function redisLocalRestoreCommands(fileName: string): string {
+  return [
+    `# Run these commands in the folder where the downloaded file is saved`,
+    `mkdir -p /tmp/revenant-restore`,
+    `cp "./${fileName}" /tmp/revenant-restore/dump.rdb`,
+    `redis-server --port 6380 --dir /tmp/revenant-restore --dbfilename dump.rdb --save "" --appendonly no`,
+  ].join("\n");
+}

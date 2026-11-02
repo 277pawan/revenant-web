@@ -101,6 +101,21 @@ code,
   animation: connector-flow 1.8s linear infinite;
 }
 
+@keyframes redis-panel-reveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.redis-panel-in {
+  animation: redis-panel-reveal 180ms ease-out both;
+}
+
 @keyframes pipeline-node-reveal {
   from {
     opacity: 0;
@@ -117,6 +132,10 @@ code,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .redis-panel-in {
+    animation: none;
+  }
+
   .pipeline-node-enter {
     animation: none;
   }
