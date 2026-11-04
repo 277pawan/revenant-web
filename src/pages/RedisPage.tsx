@@ -67,7 +67,7 @@ const redisUrlSchema = z
   .min(1, "Redis URL is required")
   .refine(
     (v) => v.startsWith("redis://") || v.startsWith("rediss://"),
-    "Must start with redis:// or rediss://"
+    "Must start with redis:// or rediss://",
   );
 
 const redisFormFields = {
@@ -85,7 +85,7 @@ const redisEditFormSchema = redisFormSchema.extend({
     .trim()
     .refine(
       (v) => !v || v.startsWith("redis://") || v.startsWith("rediss://"),
-      "Must start with redis:// or rediss://"
+      "Must start with redis:// or rediss://",
     ),
 });
 
@@ -108,7 +108,9 @@ export function RedisPage() {
   const planLimits = getPlanDefinition(plan);
 
   const canRead = user ? roleHasPermission(user.role, "databases:read") : false;
-  const canWrite = user ? roleHasPermission(user.role, "credentials:write") : false;
+  const canWrite = user
+    ? roleHasPermission(user.role, "credentials:write")
+    : false;
   const canRun = user ? roleHasPermission(user.role, "jobs:run") : false;
 
   const [resources, setResources] = useState<RedisResource[]>([]);
@@ -154,11 +156,17 @@ export function RedisPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.listRedisResources(page, PAGE_SIZE, debouncedSearch);
+      const res = await api.listRedisResources(
+        page,
+        PAGE_SIZE,
+        debouncedSearch,
+      );
       setResources(res.data);
       setPagination(res.pagination);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load Redis resources");
+      setError(
+        err instanceof Error ? err.message : "Failed to load Redis resources",
+      );
     } finally {
       setLoading(false);
     }
@@ -168,22 +176,25 @@ export function RedisPage() {
     void load();
   }, [load]);
 
-  const loadDetail = useCallback(async (id: string) => {
-    setDetailLoading(true);
-    try {
-      const res = await api.listRedisProofs(id);
-      setProofs(res.proofs);
-      setSnapshots(res.snapshots);
-      setProofsUsedThisMonth(res.proofsUsedThisMonth);
-    } catch (err) {
-      toast.error(
-        "Could not load proof history",
-        err instanceof Error ? err.message : "Unexpected error"
-      );
-    } finally {
-      setDetailLoading(false);
-    }
-  }, [toast]);
+  const loadDetail = useCallback(
+    async (id: string) => {
+      setDetailLoading(true);
+      try {
+        const res = await api.listRedisProofs(id);
+        setProofs(res.proofs);
+        setSnapshots(res.snapshots);
+        setProofsUsedThisMonth(res.proofsUsedThisMonth);
+      } catch (err) {
+        toast.error(
+          "Could not load proof history",
+          err instanceof Error ? err.message : "Unexpected error",
+        );
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     if (resources.length === 0) {
@@ -207,7 +218,9 @@ export function RedisPage() {
    * nothing while idle.
    */
   useEffect(() => {
-    const hasActiveProof = proofs.some((p) => p.status === "pending" || p.status === "running");
+    const hasActiveProof = proofs.some(
+      (p) => p.status === "pending" || p.status === "running",
+    );
     if (!selectedId || !hasActiveProof) return;
     if (typeof document !== "undefined" && document.hidden) return;
 
@@ -220,7 +233,7 @@ export function RedisPage() {
 
   const selected = useMemo(
     () => resources.find((r) => r.id === selectedId) ?? null,
-    [resources, selectedId]
+    [resources, selectedId],
   );
 
   function updateSearch(value: string) {
@@ -253,8 +266,7 @@ export function RedisPage() {
       databaseId: resource.databaseId ?? "",
       snapshotEnabled: resource.snapshotEnabled,
       snapshotRetentionHours:
-        resource.snapshotRetentionHours ??
-        resolveRedisRetentionHours(plan, 24),
+        resource.snapshotRetentionHours ?? resolveRedisRetentionHours(plan, 24),
     });
     setShowForm(true);
   }
@@ -284,7 +296,7 @@ export function RedisPage() {
           "Redis updated",
           snapshotEnabled
             ? `Snapshots will be kept for ${formatRedisRetention(retentionHours)}`
-            : "Snapshot storage is off — verify only, nothing stored"
+            : "Snapshot storage is off — verify only, nothing stored",
         );
       } else {
         await api.createRedisResource({
@@ -298,14 +310,15 @@ export function RedisPage() {
           "Redis added",
           snapshotEnabled
             ? `Snapshots kept for ${formatRedisRetention(retentionHours)}`
-            : "Verify-only — enable snapshot storage whenever you want"
+            : "Verify-only — enable snapshot storage whenever you want",
         );
       }
 
       closeForm();
       await load();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to save Redis resource";
+      const message =
+        err instanceof Error ? err.message : "Failed to save Redis resource";
       setError(message);
       toast.error("Save failed", message);
     } finally {
@@ -317,23 +330,25 @@ export function RedisPage() {
     setRunningProof(true);
     try {
       const { proof } = await api.startRedisProof(resource.id, {});
-      window.dispatchEvent(new CustomEvent("revenant:redis-proof-started", {
-        detail: {
-          proofId: proof.proofId,
-          redisResourceId: resource.id,
-          resourceName: resource.name,
-        },
-      }));
+      window.dispatchEvent(
+        new CustomEvent("revenant:redis-proof-started", {
+          detail: {
+            proofId: proof.proofId,
+            redisResourceId: resource.id,
+            resourceName: resource.name,
+          },
+        }),
+      );
       toast.success(
         "Proof queued",
-        "The background worker will run the restore checks. Track its progress in Background work."
+        "The background worker will run the restore checks. Track its progress in Background work.",
       );
       await loadDetail(resource.id);
       await load();
     } catch (err) {
       toast.error(
         "Could not start proof",
-        err instanceof Error ? err.message : "Unexpected error"
+        err instanceof Error ? err.message : "Unexpected error",
       );
     } finally {
       setRunningProof(false);
@@ -346,7 +361,10 @@ export function RedisPage() {
       await api.updateRedisResource(resource.id, {
         snapshotEnabled: next,
         snapshotRetentionHours: next
-          ? resolveRedisRetentionHours(plan, resource.snapshotRetentionHours ?? 24)
+          ? resolveRedisRetentionHours(
+              plan,
+              resource.snapshotRetentionHours ?? 24,
+            )
           : null,
       });
       toast.success(
@@ -354,16 +372,16 @@ export function RedisPage() {
         next
           ? `Artifacts are hard-deleted after ${formatRedisRetention(
               resource.snapshotRetentionHours ??
-                resolveRedisRetentionHours(plan, 24)
+                resolveRedisRetentionHours(plan, 24),
             )}`
-          : "Existing artifacts were deleted"
+          : "Existing artifacts were deleted",
       );
       await load();
       await loadDetail(resource.id);
     } catch (err) {
       toast.error(
         "Update failed",
-        err instanceof Error ? err.message : "Could not update Redis resource"
+        err instanceof Error ? err.message : "Could not update Redis resource",
       );
     }
   }
@@ -375,14 +393,14 @@ export function RedisPage() {
       await api.deleteRedisResource(removeTarget.id);
       toast.warning(
         "Redis deleted",
-        "Credentials, proofs and any stored snapshots were removed"
+        "Credentials, proofs and any stored snapshots were removed",
       );
       setRemoveTarget(null);
       await load();
     } catch (err) {
       toast.error(
         "Delete failed",
-        err instanceof Error ? err.message : "Could not delete Redis resource"
+        err instanceof Error ? err.message : "Could not delete Redis resource",
       );
     } finally {
       setRemoving(false);
@@ -392,13 +410,16 @@ export function RedisPage() {
   async function deleteSnapshot(snapshotId: string) {
     try {
       await api.deleteRedisSnapshot(snapshotId);
-      toast.success("Snapshot deleted", "The stored artifact was removed immediately");
+      toast.success(
+        "Snapshot deleted",
+        "The stored artifact was removed immediately",
+      );
       if (selectedId) await loadDetail(selectedId);
       await load();
     } catch (err) {
       toast.error(
         "Delete failed",
-        err instanceof Error ? err.message : "Could not delete snapshot"
+        err instanceof Error ? err.message : "Could not delete snapshot",
       );
     }
   }
@@ -410,7 +431,7 @@ export function RedisPage() {
     } catch (err) {
       toast.error(
         "Could not download the snapshot",
-        err instanceof Error ? err.message : "Unexpected error"
+        err instanceof Error ? err.message : "Unexpected error",
       );
     }
   }
@@ -430,9 +451,10 @@ export function RedisPage() {
             Redis restore proofs are available on Starter and Pro
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-sm text-amber-800">
-            Create and run Redis restore proofs from this page with a supported plan.
-            Revenant creates the proof record, runs its built-in restore checks, and
-            shows the results here. No proof file or validation script is required.
+            Create and run Redis restore proofs from this page with a supported
+            plan. Revenant creates the proof record, runs its built-in restore
+            checks, and shows the results here. No proof file or validation
+            script is required.
           </p>
           <p className="mt-4 text-sm text-amber-800">
             <a
@@ -474,8 +496,8 @@ export function RedisPage() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
         <p className="text-sm text-slate-600">
-          Revenant creates the proof and records each restore check here. No proof file
-          or script is needed.
+          Revenant creates the proof and records each restore check here. No
+          proof file or script is needed.
         </p>
         <Link
           to="/redis/guide"
@@ -494,7 +516,10 @@ export function RedisPage() {
             disabled={loading}
             className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1.5 text-xs font-medium text-red-800 disabled:opacity-50"
           >
-            <Loader2 size={13} className={loading ? "animate-spin" : undefined} />
+            <Loader2
+              size={13}
+              className={loading ? "animate-spin" : undefined}
+            />
             Retry
           </button>
         </div>
@@ -566,8 +591,9 @@ export function RedisPage() {
                     Keep a compressed snapshot in Revenant storage
                   </span>
                   <span className="mt-0.5 block text-xs text-slate-500">
-                    Off by default. When off, Revenant verifies your backup and stores
-                    nothing. When on, each artifact is hard-deleted at its expiry.
+                    Off by default. When off, Revenant verifies your backup and
+                    stores nothing. When on, each artifact is hard-deleted at
+                    its expiry.
                   </span>
                 </span>
               </label>
@@ -577,10 +603,10 @@ export function RedisPage() {
                   The current retention policy is{" "}
                   {formatRedisRetention(
                     editing.snapshotRetentionHours ??
-                      resolveRedisRetentionHours(plan, 24)
+                      resolveRedisRetentionHours(plan, 24),
                   )}
-                  . Snapshot expiry is fixed at capture; editing this Redis does not
-                  change existing snapshots&apos; expiry times.
+                  . Snapshot expiry is fixed at capture; editing this Redis does
+                  not change existing snapshots&apos; expiry times.
                 </p>
               )}
 
@@ -595,7 +621,7 @@ export function RedisPage() {
                       {REDIS_RETENTION_OPTIONS.filter(
                         (o) =>
                           planLimits.redisSnapshotRetentionHours == null ||
-                          o.hours <= planLimits.redisSnapshotRetentionHours
+                          o.hours <= planLimits.redisSnapshotRetentionHours,
                       ).map((o) => (
                         <option key={o.hours} value={o.hours}>
                           {o.label}
@@ -609,12 +635,16 @@ export function RedisPage() {
                       <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                       <span>
                         Your {planLimits.name} plan caps this at{" "}
-                        {formatRedisRetention(planLimits.redisSnapshotRetentionHours)}.
-                        We will store it for{" "}
-                        {formatRedisRetention(resolveRedisRetentionHours(plan, watchRetention))}{" "}
+                        {formatRedisRetention(
+                          planLimits.redisSnapshotRetentionHours,
+                        )}
+                        . We will store it for{" "}
+                        {formatRedisRetention(
+                          resolveRedisRetentionHours(plan, watchRetention),
+                        )}{" "}
                         instead — Pro allows{" "}
                         {formatRedisRetention(
-                          getPlanDefinition("pro").redisSnapshotRetentionHours
+                          getPlanDefinition("pro").redisSnapshotRetentionHours,
                         )}
                         .
                       </span>
@@ -623,8 +653,8 @@ export function RedisPage() {
 
                   {!planLimits.redisSnapshotEnabled && (
                     <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-800">
-                      Snapshot storage is not included in your plan. You can still run
-                      unlimited restore proofs.
+                      Snapshot storage is not included in your plan. You can
+                      still run unlimited restore proofs.
                     </p>
                   )}
                 </div>
@@ -669,19 +699,30 @@ export function RedisPage() {
                 : " registered"}
             </span>
             {proofLimit != null && (
-              <span className={proofsUsedThisMonth >= proofLimit ? "text-amber-700" : undefined}>
-                {proofsUsedThisMonth}/{proofLimit} proof{proofLimit === 1 ? "" : "s"} this month
+              <span
+                className={
+                  proofsUsedThisMonth >= proofLimit
+                    ? "text-amber-700"
+                    : undefined
+                }
+              >
+                {proofsUsedThisMonth}/{proofLimit} proof
+                {proofLimit === 1 ? "" : "s"} this month
               </span>
             )}
           </div>
 
           {loading ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-500">Loading…</p>
+            <p className="px-4 py-8 text-center text-sm text-slate-500">
+              Loading…
+            </p>
           ) : resources.length === 0 ? (
             <div className="px-4 py-14 text-center">
               <HardDrive className="mx-auto mb-2 text-slate-300" size={32} />
               <p className="font-medium text-slate-800">
-                {debouncedSearch.trim() ? "No matches" : "No Redis instances yet"}
+                {debouncedSearch.trim()
+                  ? "No matches"
+                  : "No Redis instances yet"}
               </p>
               <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">
                 {debouncedSearch.trim()
@@ -710,7 +751,9 @@ export function RedisPage() {
                   }`}
                 >
                   <div className="min-w-0">
-                    <p className="break-words font-medium text-slate-900">{r.name}</p>
+                    <p className="break-words font-medium text-slate-900">
+                      {r.name}
+                    </p>
                     <p className="break-all font-mono text-xs text-slate-500">
                       {r.host}:{r.port}/{r.dbIndex}
                       {r.tls ? " · TLS" : ""}
@@ -763,7 +806,9 @@ export function RedisPage() {
                             }
                             aria-label={`Toggle snapshot storage for ${r.name}`}
                             className={`rounded p-1.5 hover:bg-slate-100 ${
-                              r.snapshotEnabled ? "text-brand" : "text-slate-500"
+                              r.snapshotEnabled
+                                ? "text-brand"
+                                : "text-slate-500"
                             }`}
                           >
                             <HardDrive size={15} />
@@ -807,7 +852,8 @@ export function RedisPage() {
         <div className="space-y-4">
           {!selected ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
-              Select a Redis instance to see its fingerprint, proofs, and snapshots.
+              Select a Redis instance to see its fingerprint, proofs, and
+              snapshots.
             </div>
           ) : (
             <>
@@ -820,7 +866,9 @@ export function RedisPage() {
                     <p className="font-mono text-xs text-slate-500">
                       {selected.host}:{selected.port}/{selected.dbIndex}
                       {selected.tls ? " · TLS" : ""}
-                      {selected.engineVersion ? ` · Redis ${selected.engineVersion}` : ""}
+                      {selected.engineVersion
+                        ? ` · Redis ${selected.engineVersion}`
+                        : ""}
                     </p>
                   </div>
                   <button
@@ -845,15 +893,11 @@ export function RedisPage() {
                     ) : (
                       <Play size={16} />
                     )}
-                    {runningProof ? "Creating proof…" : "Create & run restore proof"}
+                    {runningProof
+                      ? "Creating proof…"
+                      : "Create & run restore proof"}
                   </button>
                 )}
-                <Link
-                  to="/redis/guide"
-                  className="ml-3 inline-block text-sm font-medium text-brand underline"
-                >
-                  How restore proofs work
-                </Link>
               </div>
 
               <RedisFingerprintCard resource={selected} />
@@ -890,9 +934,10 @@ export function RedisPage() {
 
       <p className="mt-6 text-xs text-slate-400">
         <Database size={12} className="mr-1 inline" />
-        Redis bytes never enter the control-plane database. Only metadata — keyspace
-        counts, config flags and SHA-256 digests — is stored here.
+        Redis bytes never enter the control-plane database. Only metadata —
+        keyspace counts, config flags and SHA-256 digests — is stored here.
       </p>
     </AppShell>
   );
 }
+

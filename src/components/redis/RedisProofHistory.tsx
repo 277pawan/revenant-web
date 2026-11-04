@@ -194,7 +194,7 @@ export function RedisProofHistory({
                         <span className="text-red-700"> · artifact failed</span>
                       )}
                     </span>
-                    {canDelete && !expired && (
+                    {canDelete && (
                       <button
                         type="button"
                         onClick={() => onDeleteSnapshot(snapshot.id)}

@@ -227,20 +227,7 @@ export function RedisHistoryPage() {
               }`
             : "Search and page through the full history."
         }
-      >
-        <Link
-          to="/redis/guide"
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Redis proof guide
-        </Link>
-        <Link
-          to="/redis"
-          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Back to Redis
-        </Link>
-      </PageHeader>
+      ></PageHeader>
 
       <div className="mx-auto max-w-6xl">
         <nav className="mb-4 flex gap-2" aria-label="Redis history">
@@ -434,7 +421,7 @@ export function RedisHistoryPage() {
                                   Download & restore
                                 </button>
                               )}
-                              {canDelete && !expired && (
+                              {canDelete && (
                                 <button
                                   type="button"
                                   onClick={() =>
